@@ -146,8 +146,6 @@ class Methods(object):
                         sample_dict[sample].illumina.raw.r1 = file_path
                     elif '_R2' in filename:
                         sample_dict[sample].illumina.raw.r2 = file_path
-        if not sample_dict:
-            raise Exception('Sample dictionary empty!')
 
         return sample_dict
 

@@ -15,7 +15,7 @@ __version__ = '0.1'
 # Create virtual environment
 mamba create -n BGA -c bioconda -y python=3.10.11 nextpolish=1.4.1 bwa=0.7.17 samtools=1.17 porechop=0.2.4 \
     filtlong=0.2.1 minimap2=2.26 flye=2.9.2 shasta=0.11.1 quast=5.2.0 qualimap=2.2.2d bbmap=39.01 bandage=0.8.1 \
-    fastp=0.23.2 ntedit=1.3.5 polypolish=0.5.0 pandas=1.5.3
+    fastp=0.23.2 ntedit=1.3.5 polypolish=0.5.0 pandas=1.5.3 seqtk=1.3
 
 # Activate virtual environment
 conda activate BGA
@@ -34,9 +34,10 @@ class BGA(object):
         self.min_size = args.min_size
 
         # Flags
-        self.trim_nano = args.trim_nano
-        self.filter_nano = args.filter_nano
-        self. trim_illumina = args.trim_illumina
+        self.trim_long = args.trim_long
+        self.filter_long = args.filter_long
+        self. trim_short = args.trim_short
+        self.polish = args.polish
 
         # Performance
         self.cpu = args.threads
@@ -61,6 +62,8 @@ class BGA(object):
         if self.short_reads:
             Methods.check_input(self.short_reads)
 
+        print('\tAll good!')
+
         ############################################################
 
         # Step completion report files
@@ -74,7 +77,8 @@ class BGA(object):
         trimmed_folder = self.output_folder + '/1_trimmed_long/'
         filtered_folder = self.output_folder + '/2_filtered/'
         assembled_folder = self.output_folder + '/3_assembled/'
-        illumina_trimmed_folder = self.output_folder + '/4_trimmed_short/'
+        illumina_trimmed_folder = self.output_folder + '/4a_trimmed_short/'
+        illumina_trimmed_report_folder = self.output_folder + '/4b_trimmed_short/'
         polished_folder = self.output_folder + '/5_polished/'
 
         # Create output folder
@@ -90,19 +94,15 @@ class BGA(object):
             self.sample_dict = {k: v for (k, v) in self.sample_dict.items() if 'unclassified' not in k}
 
             # Trim
-            if self.trim_nano:
+            if self.trim_long:
                 print('Trimming Nanopore reads with Porechop...')
                 NanoporeMethods.run_porechop_parallel(self.sample_dict, trimmed_folder,
                                                       self.cpu, self.parallel)
 
             # Filter
-            if self.filter_nano:
-                if self.trim_nano:  # Use trimmed reads
-                    NanoporeMethods.run_filtlong_parallel(self.sample_dict, filtered_folder,
-                                                          self.ref_size, self.parallel)
-                else:  # Use raw reads
-                    NanoporeMethods.run_filtlong_parallel(self.sample_dict, filtered_folder,
-                                                          self.ref_size, self.parallel)
+            if self.filter_long:
+                NanoporeMethods.run_filtlong_parallel(self.sample_dict, filtered_folder,
+                                                      self.ref_size, self.parallel)
 
             # Assemble
             if self.assembler == 'flye':
@@ -120,20 +120,20 @@ class BGA(object):
 
             # Check that we have paired-end reads
             for sample, info_obj in self.sample_dict.items():
-                if not info_obj.illumina.r1 and info_obj.illumina.r1:
+                if not info_obj.illumina.raw.r1 and info_obj.illumina.raw.r1:
                     raise Exception('Illumina data must be paired-end (R1 and R2 files required).')
 
             # Trim
-            if self.trim_illumina:
-                IlluminaMethods.trim_illumina_fastp_paired_parallel(self.sample_dict, il)
+            if self.trim_short:
+                IlluminaMethods.trim_illumina_fastp_paired_parallel(self.sample_dict, illumina_trimmed_folder,
+                                                                    self.illumina_trimmed_report_folder,
+                                                                    self.cpu, self.parallel)
 
             # Polish
+            if self.polish:
+                IlluminaMethods.polish(self.sample_dict, polished_folder, self.cpu)
 
-
-
-        # self.sample_dict['raw'].pop('unclassified_pass', None)
-
-        print('\tAll good!')
+        print('\tDone!')
 
 
 if __name__ == "__main__":
@@ -167,16 +167,16 @@ if __name__ == "__main__":
                         help='Override automatically detected reference size for Flye. If entered manually, '
                              'it will also be used to during the long read filtering step (to retain the 100x to reads,'
                              ' if coverage allows. Optional.')
-    parser.add_argument('--trim-nano',
+    parser.add_argument('--trim-long',
                         required=False, action='store_true',
                         help='Trim long reads with Porechop prior assembly. Default is False.')
-    parser.add_argument('--filter-nano',
+    parser.add_argument('--filter-long',
                         required=False, action='store_true',
                         help='Filter long reads with Filtlong prior assembly. Drop bottom 5%. Default is False.')
     parser.add_argument('--polish',
                         required=False, action='store_true',
                         help='Polish long read assembly with Illumina paired-end data. Default is False.')
-    parser.add_argument('--trim-illumina',
+    parser.add_argument('--trim-short',
                         required=False, action='store_true',
                         help='Trim paired-end Illumina reads with FastP prior polishing. Default is False.')
     parser.add_argument('-t', '--threads', metavar=str(max_cpu),
