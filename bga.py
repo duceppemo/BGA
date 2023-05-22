@@ -114,7 +114,7 @@ class BGA(object):
             else:  # elif self.assembler == 'shasta':
                 print('Assembling Nanopore reads with Shasta...')
                 NanoporeMethods.assemble_shasta_parallel(self.sample_dict, assembled_folder,
-                                                         self.ref_size, self.cpu, self.parallel)
+                                                         self.ref_size, self.cpu, self.parallel, done_assembling)
 
         else:
             raise Exception('You must provide long reads from Nanopore.')
@@ -139,6 +139,8 @@ class BGA(object):
             if self.polish:
                 print('Polishing long read assembly with short reads...')
                 IlluminaMethods.polish(self.sample_dict, polished_folder, self.cpu, done_polishing)
+        else:
+            raise Exception('You must provide Illumina paired-end data in order to perform polishing.')
 
         print('\tDone!')
 
@@ -167,7 +169,10 @@ if __name__ == "__main__":
                         required=False,
                         type=int,
                         help='Minimum read size for Shasta assembler or minimum read overlap for Flye. '
-                             'Default 3000 for Shasta and auto for Flye. Optional.')
+                             'Note that Shasta uses a min read size of 10,000bp by default and Flye automatically '
+                             'sets this values based on read length distribution. It is recommended, to set this value '
+                             'to something that reflects your read size distribution if using Shasta, say 3,000. '
+                             'Optional.')
     parser.add_argument('--size', metavar='5000000',
                         required=False,
                         type=int,
@@ -193,7 +198,8 @@ if __name__ == "__main__":
     parser.add_argument('-p', '--parallel', metavar='2',
                         required=False,
                         type=int, default=2,
-                        help='Number of samples to process in parallel. Default is 2. Optional.')
+                        help='Number of samples to process in parallel. Keep low if your computer has low memory. '
+                             'Default is 2. Optional.')
     parser.add_argument('-m', '--memory', metavar=str(max_mem),
                         required=False,
                         type=int, default=max_mem,

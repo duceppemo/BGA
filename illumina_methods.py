@@ -47,7 +47,7 @@ class IlluminaMethods(object):
                 sample_dict[results[0]].illumina.trimmed.r2 = results[2]
 
         if os.path.exists(flag):  # Already performed
-            print('\tSkipping filtering long reads. Already done.')
+            print('\tSkipping trimming short reads. Already done.')
         else:  # Create the done flag
             Methods.flag_done(flag)
 
@@ -285,26 +285,38 @@ class IlluminaMethods(object):
 
     @staticmethod
     def polish(sample_dict, polished_folder, cpu, flag):
-        Methods.make_folder(polished_folder)
+        if os.path.exists(flag):  # Already performed
+            print('\tSkipping polishing. Already done.')
+        else:
+            # Loop through samples one by one.
+            for sample, info_obj in sample_dict.items():
+                print('\t{}'.format(sample))
+                # I/O
+                if info_obj.illumina.trimmed.r1:
+                    r1 = info_obj.illumina.trimmed.r1
+                    r2 = info_obj.illumina.trimmed.r2
+                else:
+                    r1 = info_obj.illumina.raw.r1
+                    r2 = info_obj.illumina.raw.r2
 
-        for sample, info_obj in sample_dict.items():
-            print('\t{}'.format(sample))
-            # I/O
-            if info_obj.illumina.trimmed.r1:
-                r1 = info_obj.illumina.trimmed.r1
-                r2 = info_obj.illumina.trimmed.r2
-            else:
-                r1 = info_obj.illumina.raw.r1
-                r2 = info_obj.illumina.raw.r2
+                # Check if there is an assembly available for that sample
+                if not info_obj.assembly:
+                    print('No assembly found for {}. Skipping polishing.'.format(sample))
+                    continue
 
-            # NextPolish
-            # for i in range(2):
-            genome = IlluminaMethods.run_nextpolish(info_obj.assembly, r1, r2, polished_folder, cpu, sample)
-            genome = IlluminaMethods.run_nextpolish(genome, r1, r2, polished_folder, cpu, sample)
+                # Create polish folder
+                Methods.make_folder(polished_folder)
 
-            # ntEdit
-            genome = IlluminaMethods.run_ntedit(genome, r1, r2, polished_folder, cpu, sample)
+                # NextPolish
+                # for i in range(2):
+                genome = IlluminaMethods.run_nextpolish(info_obj.assembly, r1, r2, polished_folder, cpu, sample)
+                genome = IlluminaMethods.run_nextpolish(genome, r1, r2, polished_folder, cpu, sample)
 
-            # Polypolish
-            for i in range(3):
-                genome = IlluminaMethods.run_polypolish(genome, r1, r2, polished_folder, sample)
+                # ntEdit
+                genome = IlluminaMethods.run_ntedit(genome, r1, r2, polished_folder, cpu, sample)
+
+                # Polypolish
+                for i in range(3):
+                    genome = IlluminaMethods.run_polypolish(genome, r1, r2, polished_folder, sample)
+
+            Methods.flag_done(flag)

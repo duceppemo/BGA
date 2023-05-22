@@ -219,12 +219,9 @@ class NanoporeMethods(object):
         df.to_csv(output_stats_file, sep='\t', index=False)
 
     @staticmethod
-    def assemble_shasta(sample, info_obj, output_folder, min_size, cpu):
-        print('\t{}'.format(sample))
+    def assemble_shasta(sample, info_obj, output_folder, min_size, cpu, flag):
 
-        # Create a subfolder for each sample
-        output_subfolder = output_folder + sample + '/'
-
+        # I/O
         # Figure out which reads we need to use
         if info_obj.nanopore.filtered:
             input_fastq = info_obj.nanopore.filtered
@@ -236,62 +233,73 @@ class NanoporeMethods(object):
         # Unzipped fastq file (needed for shasta)
         unzipped_fastq = output_folder + sample + '.fastq'
 
-        cmd_ungzip = ['pigz', '-dkc', input_fastq]  # To stdout
-        cmd_shasta = ['shasta',
-                      '--config', 'Nanopore-Oct2021',
-                      '--input', unzipped_fastq,
-                      '--assemblyDirectory', output_subfolder,
-                      '--command', 'assemble',
-                      '--threads', str(cpu),
-                      '--Reads.minReadLength', str(min_size)]
-        cmd_shasta_clean = ['shasta',
-                            '--assemblyDirectory', output_subfolder,
-                            '--command', 'cleanupBinaryData']
-
-        # Decompress fastq for shasta
-        with open(unzipped_fastq, 'w') as f:
-            subprocess.run(cmd_ungzip, stdout=f)
-
-        # Run shasta assembler
-        shasta_stdout = output_folder + sample + '_shasta_stdout.txt'
-        with open(shasta_stdout, 'w') as f:
-            subprocess.run(cmd_shasta, stdout=f, stderr=subprocess.DEVNULL)
-
-        # Cleanup temporary files
-        subprocess.run(cmd_shasta_clean, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-        os.remove(unzipped_fastq)
-
-        # Rename and move assembly file
         assemblies_folder = output_folder + 'all_assemblies/'
         output_assembly = assemblies_folder + sample + '.fasta'
-        Methods.make_folder(assemblies_folder)
-        if os.path.exists(output_subfolder + 'Assembly.fasta'):
-            move(output_subfolder + 'Assembly.fasta', output_assembly)
+        output_subfolder = output_folder + sample + '/'  # Create a subfolder for each sample
 
-            # Rename and move assembly graph file
-            assembly_graph_folder = output_folder + 'assembly_graphs/'
-            Methods.make_folder(assembly_graph_folder)
-            move(output_subfolder + 'Assembly.gfa', assembly_graph_folder + sample + '.gfa')
+        if not os.path.exists(flag):
+            cmd_ungzip = ['pigz', '-dkc', input_fastq]  # To stdout
+            cmd_shasta = ['shasta',
+                          '--config', 'Nanopore-Oct2021',
+                          '--input', unzipped_fastq,
+                          '--assemblyDirectory', output_subfolder,
+                          '--command', 'assemble',
+                          '--threads', str(cpu)]
+            if min_size:
+                cmd_shasta += ['--Reads.minReadLength', str(min_size)]
 
-            # Assembly graph
-            cmd_bandage = ['Bandage', 'image',
-                           '{}'.format(assembly_graph_folder + sample + '.gfa'),
-                           '{}'.format(assembly_graph_folder + sample + '.png')]
-            subprocess.run(cmd_bandage)
-        else:
-            warnings.warn('No assembly for {}!'.format(sample))
+            cmd_shasta_clean = ['shasta',
+                                '--assemblyDirectory', output_subfolder,
+                                '--command', 'cleanupBinaryData']
+
+            # Decompress fastq for shasta
+            print('\t{}'.format(sample))
+            with open(unzipped_fastq, 'w') as f:
+                subprocess.run(cmd_ungzip, stdout=f)
+
+            # Run shasta assembler
+            shasta_stdout = output_folder + sample + '_shasta_stdout.txt'
+            with open(shasta_stdout, 'w') as f:
+                subprocess.run(cmd_shasta, stdout=f, stderr=subprocess.DEVNULL)
+
+            # Cleanup temporary files
+            subprocess.run(cmd_shasta_clean, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+            os.remove(unzipped_fastq)
+
+            # Rename and move assembly file
+            Methods.make_folder(assemblies_folder)
+            if os.path.exists(output_subfolder + 'Assembly.fasta'):
+                move(output_subfolder + 'Assembly.fasta', output_assembly)
+
+                # Rename and move assembly graph file
+                assembly_graph_folder = output_folder + 'assembly_graphs/'
+                Methods.make_folder(assembly_graph_folder)
+                move(output_subfolder + 'Assembly.gfa', assembly_graph_folder + sample + '.gfa')
+
+                # Assembly graph
+                cmd_bandage = ['Bandage', 'image',
+                               '{}'.format(assembly_graph_folder + sample + '.gfa'),
+                               '{}'.format(assembly_graph_folder + sample + '.png')]
+                subprocess.run(cmd_bandage)
+            else:
+                warnings.warn('No assembly for {}!'.format(sample))
 
         return sample, output_assembly
 
     @staticmethod
-    def assemble_shasta_parallel(sample_dict, output_folder, min_size, cpu, parallel):
+    def assemble_shasta_parallel(sample_dict, output_folder, min_size, cpu, parallel, flag):
         Methods.make_folder(output_folder)
 
         with futures.ThreadPoolExecutor(max_workers=int(parallel)) as executor:
-            args = ((sample, info_obj, output_folder, min_size, int(cpu / parallel))
+            args = ((sample, info_obj, output_folder, min_size, int(cpu / parallel), flag)
                     for sample, info_obj in sample_dict.items())
             for results in executor.map(lambda x: NanoporeMethods.assemble_shasta(*x), args):
                 sample_dict[results[0]].assembly = results[1]
+
+        if os.path.exists(flag):  # Already performed
+            print('\tSkipping filtering long reads. Already done.')
+        else:  # Create the done flag
+            Methods.flag_done(flag)
 
     @staticmethod
     def shasta_assembly_stats(assembly_folder, output_folder):
