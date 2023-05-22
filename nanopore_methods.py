@@ -18,62 +18,79 @@ class Sample(object):
 
 class NanoporeMethods(object):
     @staticmethod
-    def run_porechop(sample, info_obj, trimmed_folder, cpu):
+    def run_porechop(sample, info_obj, trimmed_folder, cpu, flag):
         input_fastq = info_obj.nanopore.raw
         trimmed_fastq = trimmed_folder + '/' + sample + '.fastq.gz'
 
-        cmd = ['porechop',
-               '-i', input_fastq,
-               '-o', trimmed_fastq,
-               '--threads', str(cpu),
-               '--check_reads', str(1000)]
+        if not os.path.exists(flag):
+            cmd = ['porechop',
+                   '-i', input_fastq,
+                   '-o', trimmed_fastq,
+                   '--threads', str(cpu),
+                   '--check_reads', str(1000)]
 
-        print('\t{}'.format(sample))
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+            print('\t{}'.format(sample))
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+
         return sample, trimmed_fastq
 
     @staticmethod
-    def run_porechop_parallel(sample_dict, output_folder, cpu, parallel):
+    def run_porechop_parallel(sample_dict, output_folder, cpu, parallel, flag):
         Methods.make_folder(output_folder)
 
+        # Will skip the actual trimming if flag file exists
+        # Still need to run it to update the dictionary with trimmed files
         with futures.ThreadPoolExecutor(max_workers=int(parallel)) as executor:
-            args = ((sample, info_obj, output_folder, int(cpu / parallel))
+            args = ((sample, info_obj, output_folder, int(cpu / parallel), flag)
                     for sample, info_obj in sample_dict.items())
             for results in executor.map(lambda x: NanoporeMethods.run_porechop(*x), args):
                 sample_dict[results[0]].nanopore.trimmed = results[1]
 
-    @staticmethod
-    def run_filtlong(sample, info_obj, filtered_folder, genome_size):
-        print('\t{}'.format(sample))
+        if os.path.exists(flag):  # Already performed
+            print('\tSkipping filtering long reads. Already done.')
+        else:  # Create the done flag
+            Methods.flag_done(flag)
 
+    @staticmethod
+    def run_filtlong(sample, info_obj, filtered_folder, genome_size, flag):
+        # I/O
         if info_obj.nanopore.trimmed:
             input_fastq = info_obj.nanopore.trimmed
         else:
             input_fastq = info_obj.nanopore.raw
 
-        cmd = ['filtlong',
-               '--keep_percent', str(95),  # drop bottom 5% reads
-               '--min_length', str(500),  # remove rejected reads from targeted sequencing
-               input_fastq]
-        if genome_size:
-            cmd += ['--target_bases', str(genome_size * 100)]  # keep top 100X if more reads
-
-        # Filtlong writes to stdout
         filtered_fastq = filtered_folder + sample + '.fastq.gz'
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        with gzip.open(filtered_fastq, 'wb') as f:
-            f.write(p.communicate()[0])
+
+        if not os.path.exists(flag):
+            cmd = ['filtlong',
+                   '--keep_percent', str(95),  # drop bottom 5% reads
+                   '--min_length', str(500),  # remove rejected reads from targeted sequencing
+                   input_fastq]
+            if genome_size:
+                cmd += ['--target_bases', str(genome_size * 100)]  # keep top 100X if more reads
+
+            # Filtlong writes to stdout
+            print('\t{}'.format(sample))
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            with gzip.open(filtered_fastq, 'wb') as f:
+                f.write(p.communicate()[0])
+
         return sample, filtered_fastq
 
     @staticmethod
-    def run_filtlong_parallel(sample_dict, output_folder, genome_size, parallel):
+    def run_filtlong_parallel(sample_dict, output_folder, genome_size, parallel, flag):
         Methods.make_folder(output_folder)
 
         with futures.ThreadPoolExecutor(max_workers=int(parallel)) as executor:
-            args = ((sample, info_obj, output_folder, genome_size)
+            args = ((sample, info_obj, output_folder, genome_size, flag)
                     for sample, info_obj in sample_dict.items())
             for results in executor.map(lambda x: NanoporeMethods.run_filtlong(*x), args):
                 sample_dict[results[0]].nanopore.filtered = results[1]
+
+        if os.path.exists(flag):  # Already performed
+            print('\tSkipping filtering long reads. Already done.')
+        else:  # Create the done flag
+            Methods.flag_done(flag)
 
     @staticmethod
     def fasta_length(input_fasta):
@@ -90,12 +107,13 @@ class NanoporeMethods(object):
             return total_len
 
     @staticmethod
-    def assemble_flye(sample, info_obj, output_folder, genome_size, min_size, cpu):
-        print('\t{}'.format(sample))
+    def assemble_flye(sample, info_obj, output_folder, genome_size, min_size, cpu, flag):
+        # I/O
+        assemblies_folder = output_folder + 'all_assemblies/'
+        output_assembly = assemblies_folder + sample + '.fasta'
 
         # Create a subfolder for each sample
         output_subfolder = output_folder + sample + '/'
-        Methods.make_folder(output_subfolder)
 
         # Figure out which reads we need to use
         if info_obj.nanopore.filtered:
@@ -105,48 +123,55 @@ class NanoporeMethods(object):
         else:
             input_fastq = info_obj.nanopore.raw
 
-        cmd_flye = ['flye',
-                    '--genome-size', str(genome_size),
-                    '--nano-hq', input_fastq,
-                    '--threads', str(cpu),
-                    '--out-dir', output_subfolder,
-                    '--iterations', str(3)]
-        if min_size:
-            cmd_flye += ['--min-overlap', str(min_size)]
+        if not os.path.exists(flag):
+            cmd_flye = ['flye',
+                        '--nano-hq', input_fastq,
+                        '--threads', str(cpu),
+                        '--out-dir', output_subfolder,
+                        '--iterations', str(3)]
+            if min_size:
+                cmd_flye += ['--min-overlap', str(min_size)]
+            if genome_size:
+                cmd_flye += ['--genome-size', str(genome_size)]
 
-        subprocess.run(cmd_flye, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+            print('\t{}'.format(sample))
+            subprocess.run(cmd_flye, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
-        # Rename and move assembly file
-        assemblies_folder = output_folder + 'all_assemblies/'
-        output_assembly = assemblies_folder + sample + '.fasta'
-        Methods.make_folder(assemblies_folder)
-        if os.path.exists(output_subfolder + 'assembly.fasta'):
-            move(output_subfolder + 'assembly.fasta', output_assembly)
+            # Rename and move assembly file
+            Methods.make_folder(assemblies_folder)
+            Methods.make_folder(output_subfolder)
+            if os.path.exists(output_subfolder + 'assembly.fasta'):
+                move(output_subfolder + 'assembly.fasta', output_assembly)
 
-            # Rename and move assembly graph file
-            assembly_graph_folder = output_folder + 'assembly_graphs/'
-            Methods.make_folder(assembly_graph_folder)
-            move(output_subfolder + 'assembly_graph.gfa', assembly_graph_folder + sample + '_graph.gfa')
+                # Rename and move assembly graph file
+                assembly_graph_folder = output_folder + 'assembly_graphs/'
+                Methods.make_folder(assembly_graph_folder)
+                move(output_subfolder + 'assembly_graph.gfa', assembly_graph_folder + sample + '_graph.gfa')
 
-            # Assembly graph
-            cmd_bandage = ['Bandage', 'image',
-                           '{}'.format(assembly_graph_folder + sample + '_graph.gfa'),
-                           '{}'.format(assembly_graph_folder + sample + '_graph.png')]
-            subprocess.run(cmd_bandage)
-        else:
-            warnings.warn('No assembly for {}!'.format(sample))
+                # Assembly graph
+                cmd_bandage = ['Bandage', 'image',
+                               '{}'.format(assembly_graph_folder + sample + '_graph.gfa'),
+                               '{}'.format(assembly_graph_folder + sample + '_graph.png')]
+                subprocess.run(cmd_bandage)
+            else:
+                warnings.warn('No assembly for {}!'.format(sample))
 
         return sample, output_assembly
 
     @staticmethod
-    def assemble_flye_parallel(sample_dict, output_folder, genome_size, min_size, cpu, parallel):
+    def assemble_flye_parallel(sample_dict, output_folder, genome_size, min_size, cpu, parallel, flag):
         Methods.make_folder(output_folder)
 
         with futures.ThreadPoolExecutor(max_workers=int(parallel)) as executor:
-            args = ((sample, info_obj, output_folder, genome_size, min_size, int(cpu / parallel))
+            args = ((sample, info_obj, output_folder, genome_size, min_size, int(cpu / parallel), flag)
                     for sample, info_obj in sample_dict.items())
             for results in executor.map(lambda x: NanoporeMethods.assemble_flye(*x), args):
                 sample_dict[results[0]].assembly = results[1]
+
+        if os.path.exists(flag):  # Already performed
+            print('\tSkipping filtering long reads. Already done.')
+        else:  # Create the done flag
+            Methods.flag_done(flag)
 
     @staticmethod
     def flye_assembly_stats(assembly_folder, output_folder):
@@ -154,7 +179,7 @@ class NanoporeMethods(object):
         output_stats_file = output_folder + '/flye_stats.tsv'
 
         # Pandas data frame to save values
-        df = pd.DataFrame(columns=['Sample', 'TotalBases', 'ReadsN50', 'AssemblyLength', 'Contigs', 'Coverage'])
+        df = pd.DataFrame(columns=['Sample', 'ReadsTotalBases', 'ReadsN50', 'AssemblyLength', 'Contigs', 'Coverage'])
 
         # Find log file(s) and parse info of interest
         log_list = glob(assembly_folder + '/**/flye.log', recursive=True)
@@ -317,3 +342,57 @@ class NanoporeMethods(object):
         # Remove log files
         for log_file in log_list:
             os.remove(log_file)
+
+    @staticmethod
+    def run_minimap2(sample, ref, fastq_file, cpu, output_folder, keep_bam):
+        print('\t{}'.format(sample))
+
+        output_bam = output_folder + sample + '.bam'
+
+        minimap2_cmd = ['minimap2',
+                        '-a',
+                        '-x', 'map-ont',
+                        '-t', str(cpu),
+                        '--MD',
+                        '--secondary=no',
+                        ref,
+                        fastq_file]
+        samtools_view_cmd = ['samtools', 'view',
+                             '-@', str(cpu),
+                             '-F', '4', '-h',
+                             '-T', ref,
+                             '-']
+        samtools_sort_cmd = ['samtools', 'sort',
+                             '-@', str(cpu),
+                             '--reference', ref,
+                             '-']
+        samtools_markdup_cmd = ['samtools', 'markdup',
+                                '-r',
+                                '-@', str(cpu),
+                                '-',
+                                output_bam]
+        # samtools can only index chromosomes up to 512M bp.
+        samtools_index_cmd = ['samtools', 'index',
+                              output_bam]
+
+        p1 = subprocess.Popen(minimap2_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        p2 = subprocess.Popen(samtools_view_cmd, stdin=p1.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        p1.stdout.close()
+        p3 = subprocess.Popen(samtools_sort_cmd, stdin=p2.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        p2.stdout.close()
+        p4 = subprocess.Popen(samtools_markdup_cmd, stdin=p3.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        p3.stdout.close()
+        p4.communicate()
+
+        # Index bam file
+        subprocess.run(samtools_index_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+
+    @staticmethod
+    def run_minimap2_parallel(output_folder, ref, sample_dict, cpu, parallel, keep_bam):
+        Methods.make_folder(output_folder)
+
+        with futures.ThreadPoolExecutor(max_workers=int(parallel)) as executor:
+            args = ((sample, ref, path, int(cpu / parallel), output_folder, keep_bam)
+                    for sample, path in sample_dict.items())
+            for results in executor.map(lambda x: NanoporeMethods.run_minimap2(*x), args):
+                pass

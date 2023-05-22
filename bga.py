@@ -68,18 +68,18 @@ class BGA(object):
 
         # Step completion report files
         done_trimming_long = self.output_folder + '/done_trimming_long'
-        done_filtering = self.output_folder + '/done_filtering'
-        done_assembling = self.output_folder + '/done_assembling'
+        done_filtering = self.output_folder + '/done_filtering_long'
+        done_assembling = self.output_folder + '/done_assembling_long'
         done_trimming_short = self.output_folder + '/done_trimming_short'
         done_polishing = self.output_folder + '/done_polishing'
 
         # Output folders to create
         trimmed_folder = self.output_folder + '/1_trimmed_long/'
-        filtered_folder = self.output_folder + '/2_filtered/'
-        assembled_folder = self.output_folder + '/3_assembled/'
+        filtered_folder = self.output_folder + '/2_filtered_long/'
+        assembled_folder = self.output_folder + '/3_assembled_long/'
         illumina_trimmed_folder = self.output_folder + '/4a_trimmed_short/'
         illumina_trimmed_report_folder = self.output_folder + '/4b_trimmed_short/'
-        polished_folder = self.output_folder + '/5_polished/'
+        polished_folder = self.output_folder + '/5_polished_assemblies/'
 
         # Create output folder
         Methods.make_folder(self.output_folder)
@@ -97,23 +97,28 @@ class BGA(object):
             if self.trim_long:
                 print('Trimming Nanopore reads with Porechop...')
                 NanoporeMethods.run_porechop_parallel(self.sample_dict, trimmed_folder,
-                                                      self.cpu, self.parallel)
+                                                      self.cpu, self.parallel, done_trimming_long)
 
             # Filter
             if self.filter_long:
+                print('Filtering Nanopore reads with Filtlong...')
                 NanoporeMethods.run_filtlong_parallel(self.sample_dict, filtered_folder,
-                                                      self.ref_size, self.parallel)
+                                                      self.ref_size, self.parallel, done_filtering)
 
             # Assemble
             if self.assembler == 'flye':
-                NanoporeMethods.assemble_flye_parallel(self.sample_dict, assembled_folder,
-                                                       self.ref_size, self.min_size, self.cpu, self.parallel)
+                print('Assembling Nanopore reads with Flye...')
+                NanoporeMethods.assemble_flye_parallel(self.sample_dict, assembled_folder, self.ref_size,
+                                                       self.min_size, self.cpu, self.parallel, done_assembling)
+                NanoporeMethods.flye_assembly_stats(assembled_folder, self.output_folder)
             else:  # elif self.assembler == 'shasta':
+                print('Assembling Nanopore reads with Shasta...')
                 NanoporeMethods.assemble_shasta_parallel(self.sample_dict, assembled_folder,
                                                          self.ref_size, self.cpu, self.parallel)
+
         else:
-            raise Exception('You must provide long reads from Nanopore.'
-                            '')
+            raise Exception('You must provide long reads from Nanopore.')
+
         if self.short_reads:
             # Get fastq files
             self.sample_dict = Methods.get_illumina_files(self.short_reads, self.sample_dict)
@@ -125,13 +130,15 @@ class BGA(object):
 
             # Trim
             if self.trim_short:
+                print('Trimming short reads with FastP...')
                 IlluminaMethods.trim_illumina_fastp_paired_parallel(self.sample_dict, illumina_trimmed_folder,
-                                                                    self.illumina_trimmed_report_folder,
-                                                                    self.cpu, self.parallel)
+                                                                    illumina_trimmed_report_folder,
+                                                                    self.cpu, self.parallel, done_trimming_short)
 
             # Polish
             if self.polish:
-                IlluminaMethods.polish(self.sample_dict, polished_folder, self.cpu)
+                print('Polishing long read assembly with short reads...')
+                IlluminaMethods.polish(self.sample_dict, polished_folder, self.cpu, done_polishing)
 
         print('\tDone!')
 
@@ -157,7 +164,7 @@ if __name__ == "__main__":
                         type=str,
                         help='Assembly method. Default "flye". Optional.')
     parser.add_argument('--min-size', metavar='3000',
-                        required=False, default='3000',
+                        required=False,
                         type=int,
                         help='Minimum read size for Shasta assembler or minimum read overlap for Flye. '
                              'Default 3000 for Shasta and auto for Flye. Optional.')
@@ -172,7 +179,7 @@ if __name__ == "__main__":
                         help='Trim long reads with Porechop prior assembly. Default is False.')
     parser.add_argument('--filter-long',
                         required=False, action='store_true',
-                        help='Filter long reads with Filtlong prior assembly. Drop bottom 5%. Default is False.')
+                        help='Filter long reads with Filtlong prior assembly. Drop bottom 5%%. Default is False.')
     parser.add_argument('--polish',
                         required=False, action='store_true',
                         help='Polish long read assembly with Illumina paired-end data. Default is False.')
