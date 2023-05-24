@@ -15,7 +15,7 @@ __version__ = '0.1'
 # Create virtual environment
 mamba create -n BGA -c bioconda -y python=3.10.11 nextpolish=1.4.1 bwa=0.7.17 samtools=1.17 porechop=0.2.4 \
     filtlong=0.2.1 minimap2=2.26 flye=2.9.2 shasta=0.11.1 quast=5.2.0 qualimap=2.2.2d bbmap=39.01 bandage=0.8.1 \
-    fastp=0.23.2 ntedit=1.3.5 polypolish=0.5.0 pandas=1.5.3 seqtk=1.3
+    fastp=0.23.2 ntedit=1.3.5 polypolish=0.5.0 pandas=1.5.3 seqtk=1.3 medaka=1.8.0
 
 # Activate virtual environment
 conda activate BGA
@@ -185,6 +185,7 @@ if __name__ == "__main__":
     parser.add_argument('--filter-long',
                         required=False, action='store_true',
                         help='Filter long reads with Filtlong prior assembly. Drop bottom 5%%. Default is False.')
+    parser.add_argument('-m', '--model', metavar=)
     parser.add_argument('--polish',
                         required=False, action='store_true',
                         help='Polish long read assembly with Illumina paired-end data. Default is False.')

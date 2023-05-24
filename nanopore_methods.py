@@ -352,6 +352,71 @@ class NanoporeMethods(object):
             os.remove(log_file)
 
     @staticmethod
+    def polish_medak(nanopore_reads, assembly, output_folder, cpu, sample, flag):
+        # I/O
+        polished_assembly = output_folder + sample + '.fasta'
+
+        cmd_medaka = ['medaka_consensus',
+                      '-i', nanopore_reads,
+                      '-d', assembly,
+                      '-o', output_folder,
+                      '-t', str(cpu),
+                      '-m',
+                      ]
+        '''
+         sample=$(basename "$1" ".fasta")
+
+    [ -d "${polished_medaka}"/"${ass}"/"$sample" ] || mkdir -p "${polished_medaka}"/"${ass}"/"$sample"
+
+    # It is crucially important to specify the correct model (-m) according to the basecaller used.
+    # Allowed values can be found by running "medaka tools list\_models"
+    # -i "${basecalled}"/pass/"${sample}"/"${sample}"_pass.fastq.gz \
+
+    # -h  show this help text.
+    # -i  fastx input basecalls (required).
+    # -d  fasta input assembly (required).
+    # -o  output folder (default: medaka).
+    # -g  don't fill gaps in consensus with draft sequence.
+    # -m  medaka model, (default: ${MODEL}).
+    #     ${modeldata[0]}.
+    #     Alternatively a .hdf file from 'medaka train'.
+    # -f  Force overwrite of outputs (default will reuse existing outputs).
+    # -t  number of threads with which to create features (default: 1).
+    # -b  batchsize, controls memory use (default: ${BATCH_SIZE})."
+
+    medaka_consensus \
+        -i "${filtered}"/"${sample}"_filtered.fastq.gz \
+        -d "$1" \
+        -o "${polished_medaka}"/"${ass}"/"$sample" \
+        -t $((cpu/maxProc)) \
+        -m "$medaka_model" \
+        2>&1 | tee "${polished_medaka}"/"${ass}"/"${sample}"/medaka.log
+
+    # Rename sample
+    mv "${polished_medaka}"/"${ass}"/"${sample}"/consensus.fasta \
+        "${polished_medaka}"/"${ass}"/"${sample}"/"${sample}"_medaka.fasta
+
+    # Remove temporary files
+    find "${polished_medaka}"/"${ass}"/"${sample}" -type f \
+        ! -name "*_medaka.fasta" \
+        ! -name "*.gfa" \
+        ! -name "*.log" \
+        -exec rm {} \;
+
+    # Reformat fasta
+    python "${scripts}"/format_fasta.py \
+        "${polished_medaka}"/"${ass}"/"${sample}"/"${sample}"_medaka.fasta \
+        "${polished_medaka}"/"${ass}"/"${sample}"/"${sample}"_medaka.fasta1
+    mv "${polished_medaka}"/"${ass}"/"${sample}"/"${sample}"_medaka.fasta1 \
+        "${polished_medaka}"/"${ass}"/"${sample}"/"${sample}"_medaka.fasta
+        '''
+
+    @staticmethod
+    def polish_medaka_parallel():
+        pass
+
+
+    @staticmethod
     def run_minimap2(sample, ref, fastq_file, cpu, output_folder, keep_bam):
         print('\t{}'.format(sample))
 
