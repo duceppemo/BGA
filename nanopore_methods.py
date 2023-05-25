@@ -1,16 +1,16 @@
-import subprocess
 import os
-from concurrent import futures
-from shutil import move
 import gzip
-from itertools import groupby
-from glob import glob
 import warnings
+import subprocess
 import pandas as pd
+from glob import glob
+from shutil import move
+from concurrent import futures
 from bga_methods import Methods
 
 
 class Sample(object):
+    # Enable creation of multiple "dots" in a single time for an object attribute
     def __getattr__(self, name):
         self.__dict__[name] = Sample()
         return self.__dict__[name]
@@ -47,7 +47,7 @@ class NanoporeMethods(object):
                 sample_dict[results[0]].nanopore.trimmed = results[1]
 
         if os.path.exists(flag):  # Already performed
-            print('\tSkipping filtering long reads. Already done.')
+            print('\tSkipping trimming long reads. Already done.')
         else:  # Create the done flag
             Methods.flag_done(flag)
 
@@ -93,20 +93,6 @@ class NanoporeMethods(object):
             Methods.flag_done(flag)
 
     @staticmethod
-    def fasta_length(input_fasta):
-        with gzip.open(input_fasta, 'rt') if input_fasta.endswith('.gz') else open(input_fasta, 'r') as f:
-            # Create iterator in case there are more than 1 contig in reference genome
-            faiter = (x[1] for x in groupby(f, lambda line: line[0] == '>'))
-
-            total_len = 0
-            for header in faiter:
-                # Join all sequence lines of fasta entry in one line, measure its length
-                # and add it to length of any other previous sequences if present
-                total_len += len(''.join(s.rstrip() for s in faiter.__next__()))
-
-            return total_len
-
-    @staticmethod
     def assemble_flye(sample, info_obj, output_folder, genome_size, min_size, cpu, flag):
         # I/O
         assemblies_folder = output_folder + 'all_assemblies/'
@@ -146,12 +132,12 @@ class NanoporeMethods(object):
                 # Rename and move assembly graph file
                 assembly_graph_folder = output_folder + 'assembly_graphs/'
                 Methods.make_folder(assembly_graph_folder)
-                move(output_subfolder + 'assembly_graph.gfa', assembly_graph_folder + sample + '_graph.gfa')
+                move(output_subfolder + 'assembly_graph.gfa', assembly_graph_folder + sample + '.gfa')
 
                 # Assembly graph
                 cmd_bandage = ['Bandage', 'image',
-                               '{}'.format(assembly_graph_folder + sample + '_graph.gfa'),
-                               '{}'.format(assembly_graph_folder + sample + '_graph.png')]
+                               '{}'.format(assembly_graph_folder + sample + '.gfa'),
+                               '{}'.format(assembly_graph_folder + sample + '.png')]
                 subprocess.run(cmd_bandage)
             else:
                 warnings.warn('No assembly for {}!'.format(sample))
@@ -166,10 +152,10 @@ class NanoporeMethods(object):
             args = ((sample, info_obj, output_folder, genome_size, min_size, int(cpu / parallel), flag)
                     for sample, info_obj in sample_dict.items())
             for results in executor.map(lambda x: NanoporeMethods.assemble_flye(*x), args):
-                sample_dict[results[0]].assembly = results[1]
+                sample_dict[results[0]].assembly.raw = results[1]
 
         if os.path.exists(flag):  # Already performed
-            print('\tSkipping filtering long reads. Already done.')
+            print('\tSkipping assembling long reads. Already done.')
         else:  # Create the done flag
             Methods.flag_done(flag)
 
@@ -179,7 +165,7 @@ class NanoporeMethods(object):
         output_stats_file = output_folder + '/flye_stats.tsv'
 
         # Pandas data frame to save values
-        df = pd.DataFrame(columns=['Sample', 'ReadsTotalBases', 'ReadsN50', 'AssemblyLength', 'Contigs', 'Coverage'])
+        df = pd.DataFrame(columns=['Sample', 'TotalReadLength', 'ReadsN50', 'AssemblyLength', 'Contigs', 'Coverage'])
 
         # Find log file(s) and parse info of interest
         log_list = glob(assembly_folder + '/**/flye.log', recursive=True)
@@ -294,7 +280,7 @@ class NanoporeMethods(object):
             args = ((sample, info_obj, output_folder, min_size, int(cpu / parallel), flag)
                     for sample, info_obj in sample_dict.items())
             for results in executor.map(lambda x: NanoporeMethods.assemble_shasta(*x), args):
-                sample_dict[results[0]].assembly = results[1]
+                sample_dict[results[0]].assembly.raw = results[1]
 
         if os.path.exists(flag):  # Already performed
             print('\tSkipping filtering long reads. Already done.')
@@ -352,120 +338,68 @@ class NanoporeMethods(object):
             os.remove(log_file)
 
     @staticmethod
-    def polish_medak(nanopore_reads, assembly, output_folder, cpu, sample, flag):
+    def polish_medaka(sample, info_obj, output_folder, model, cpu, flag):
         # I/O
-        polished_assembly = output_folder + sample + '.fasta'
+        # Figure out which reads we need to use
+        if info_obj.nanopore.filtered:
+            input_fastq = info_obj.nanopore.filtered
+        elif info_obj.nanopore.trimmed:
+            input_fastq = info_obj.nanopore.trimmed
+        else:
+            input_fastq = info_obj.nanopore.raw
+
+        input_assembly = info_obj.assembly.raw
+
+        sample_subfolder = output_folder + sample + '/'
+        default_medaka_output = sample_subfolder + 'consensus.fasta'
+        polished_assembly = sample_subfolder + sample + '.fasta'
+        medaka_stdout = sample_subfolder + sample + '_medaka_stdout.txt'
 
         cmd_medaka = ['medaka_consensus',
-                      '-i', nanopore_reads,
-                      '-d', assembly,
-                      '-o', output_folder,
+                      '-i', input_fastq,
+                      '-d', input_assembly,
+                      '-o', sample_subfolder,
                       '-t', str(cpu),
-                      '-m',
-                      ]
-        '''
-         sample=$(basename "$1" ".fasta")
+                      '-m', model]
 
-    [ -d "${polished_medaka}"/"${ass}"/"$sample" ] || mkdir -p "${polished_medaka}"/"${ass}"/"$sample"
+        if not os.path.exists(flag):
+            # Create output folders
+            Methods.make_folder(output_folder)
+            Methods.make_folder(sample_subfolder)
 
-    # It is crucially important to specify the correct model (-m) according to the basecaller used.
-    # Allowed values can be found by running "medaka tools list\_models"
-    # -i "${basecalled}"/pass/"${sample}"/"${sample}"_pass.fastq.gz \
+            print('\t{}'.format(sample))
 
-    # -h  show this help text.
-    # -i  fastx input basecalls (required).
-    # -d  fasta input assembly (required).
-    # -o  output folder (default: medaka).
-    # -g  don't fill gaps in consensus with draft sequence.
-    # -m  medaka model, (default: ${MODEL}).
-    #     ${modeldata[0]}.
-    #     Alternatively a .hdf file from 'medaka train'.
-    # -f  Force overwrite of outputs (default will reuse existing outputs).
-    # -t  number of threads with which to create features (default: 1).
-    # -b  batchsize, controls memory use (default: ${BATCH_SIZE})."
+            # Run medaka and save STDOUT to file
+            with open(medaka_stdout, 'w') as f:
+                subprocess.run(cmd_medaka, stdout=f, stderr=subprocess.STDOUT)
 
-    medaka_consensus \
-        -i "${filtered}"/"${sample}"_filtered.fastq.gz \
-        -d "$1" \
-        -o "${polished_medaka}"/"${ass}"/"$sample" \
-        -t $((cpu/maxProc)) \
-        -m "$medaka_model" \
-        2>&1 | tee "${polished_medaka}"/"${ass}"/"${sample}"/medaka.log
+            # Rename medaka output assembly
+            os.rename(default_medaka_output, polished_assembly)
 
-    # Rename sample
-    mv "${polished_medaka}"/"${ass}"/"${sample}"/consensus.fasta \
-        "${polished_medaka}"/"${ass}"/"${sample}"/"${sample}"_medaka.fasta
+            # Reformat fasta to have 80 characters per line
+            Methods.format_fasta(polished_assembly, polished_assembly + '.tmp')
+            os.rename(polished_assembly + '.tmp', polished_assembly)
 
-    # Remove temporary files
-    find "${polished_medaka}"/"${ass}"/"${sample}" -type f \
-        ! -name "*_medaka.fasta" \
-        ! -name "*.gfa" \
-        ! -name "*.log" \
-        -exec rm {} \;
+            # Cleanup
+            ext = ['.gfa', '.log', '_medaka.fasta', '.bed', '.hdf']
+            for i in ext:
+                for j in glob(sample_subfolder + '/*' + i):
+                    if os.path.exists(j):
+                        os.remove(j)
 
-    # Reformat fasta
-    python "${scripts}"/format_fasta.py \
-        "${polished_medaka}"/"${ass}"/"${sample}"/"${sample}"_medaka.fasta \
-        "${polished_medaka}"/"${ass}"/"${sample}"/"${sample}"_medaka.fasta1
-    mv "${polished_medaka}"/"${ass}"/"${sample}"/"${sample}"_medaka.fasta1 \
-        "${polished_medaka}"/"${ass}"/"${sample}"/"${sample}"_medaka.fasta
-        '''
+        return sample, polished_assembly
 
     @staticmethod
-    def polish_medaka_parallel():
-        pass
-
-
-    @staticmethod
-    def run_minimap2(sample, ref, fastq_file, cpu, output_folder, keep_bam):
-        print('\t{}'.format(sample))
-
-        output_bam = output_folder + sample + '.bam'
-
-        minimap2_cmd = ['minimap2',
-                        '-a',
-                        '-x', 'map-ont',
-                        '-t', str(cpu),
-                        '--MD',
-                        '--secondary=no',
-                        ref,
-                        fastq_file]
-        samtools_view_cmd = ['samtools', 'view',
-                             '-@', str(cpu),
-                             '-F', '4', '-h',
-                             '-T', ref,
-                             '-']
-        samtools_sort_cmd = ['samtools', 'sort',
-                             '-@', str(cpu),
-                             '--reference', ref,
-                             '-']
-        samtools_markdup_cmd = ['samtools', 'markdup',
-                                '-r',
-                                '-@', str(cpu),
-                                '-',
-                                output_bam]
-        # samtools can only index chromosomes up to 512M bp.
-        samtools_index_cmd = ['samtools', 'index',
-                              output_bam]
-
-        p1 = subprocess.Popen(minimap2_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        p2 = subprocess.Popen(samtools_view_cmd, stdin=p1.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        p1.stdout.close()
-        p3 = subprocess.Popen(samtools_sort_cmd, stdin=p2.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        p2.stdout.close()
-        p4 = subprocess.Popen(samtools_markdup_cmd, stdin=p3.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        p3.stdout.close()
-        p4.communicate()
-
-        # Index bam file
-        subprocess.run(samtools_index_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-
-    @staticmethod
-    def run_minimap2_parallel(output_folder, ref, sample_dict, cpu, parallel, keep_bam):
+    def polish_medaka_parallel(sample_dict, output_folder, model, cpu, parallel, flag):
         Methods.make_folder(output_folder)
 
         with futures.ThreadPoolExecutor(max_workers=int(parallel)) as executor:
-            args = ((sample, ref, path, int(cpu / parallel), output_folder, keep_bam)
-                    for sample, path in sample_dict.items())
-            for results in executor.map(lambda x: NanoporeMethods.run_minimap2(*x), args):
-                pass
+            args = ((sample, info_obj, output_folder, model, int(cpu / parallel), flag)
+                    for sample, info_obj in sample_dict.items())
+            for results in executor.map(lambda x: NanoporeMethods.polish_medaka(*x), args):
+                sample_dict[results[0]].assembly.polished = results[1]
+
+        if os.path.exists(flag):  # Already performed
+            print('\tSkipping long read polishing. Already done.')
+        else:  # Create the done flag
+            Methods.flag_done(flag)

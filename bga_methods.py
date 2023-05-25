@@ -1,13 +1,13 @@
-import subprocess
+
 import os
 import sys
-from concurrent import futures
+import gzip
 import pathlib
+import textwrap
+import subprocess
+from glob import glob
 from psutil import virtual_memory
 from multiprocessing import cpu_count
-import gzip
-from glob import glob
-import warnings
 
 
 class Sample(object):
@@ -168,3 +168,31 @@ class Methods(object):
     def gzipped_file_size(gzipped_file):
         with gzip.open(gzipped_file, 'rb') as f:
             return f.seek(0, whence=2)
+
+    @staticmethod
+    def format_fasta(input_fasta, output_fasta):
+        fasta_dict = dict()
+
+        # Parse fasta file into dictionary
+        with open(input_fasta, 'r') as in_handle:
+            header = ''
+            seq = list()  # Use list to store sequence information
+            for line in in_handle:
+                line = line.rstrip()
+                if not line:
+                    continue
+                if line.startswith('>'):
+                    if seq:
+                        fasta_dict[header] = ''.join(seq)  # Store in dictionary
+                        seq = list()  # Empty seq
+                    header = line
+                else:
+                    seq.append(line)
+                # For the last entry
+                fasta_dict[header] = ''.join(seq)
+
+        # Write to file with a width of 80 character max for the sequence
+        # Any additional sequences will be written of the next line
+        with open(output_fasta, 'w') as out_handle:
+            for title, seq in fasta_dict.items():
+                out_handle.write('>{}\n{}\n'.format(title, '\n'.join(textwrap.wrap(seq, 80, break_long_words=True))))

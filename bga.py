@@ -13,9 +13,9 @@ __version__ = '0.1'
 
 """
 # Create virtual environment
-mamba create -n BGA -c bioconda -y python=3.10.11 nextpolish=1.4.1 bwa=0.7.17 samtools=1.17 porechop=0.2.4 \
-    filtlong=0.2.1 minimap2=2.26 flye=2.9.2 shasta=0.11.1 quast=5.2.0 qualimap=2.2.2d bbmap=39.01 bandage=0.8.1 \
-    fastp=0.23.2 ntedit=1.3.5 polypolish=0.5.0 pandas=1.5.3 seqtk=1.3 medaka=1.8.0
+mamba create -n BGA -c conda-forge -c bioconda -y python=3.10.11 nextpolish=1.4.1 bwa=0.7.17 samtools=1.6 porechop=0.2.4 \
+    filtlong=0.2.1 minimap2=2.26 flye=2.9.2 shasta=0.11.1 qualimap=2.2.2d bbmap=39.01 bandage=0.8.1 \
+    fastp=0.22.0 ntedit=1.3.5 polypolish=0.5.0 pandas=1.5.3 seqtk=1.4 quast=5.2.0 medaka=1.8.0
 
 # Activate virtual environment
 conda activate BGA
@@ -32,11 +32,12 @@ class BGA(object):
         self.ref_size = args.size
         self.assembler = args.assembler
         self.min_size = args.min_size
+        self.model = args.model
 
         # Flags
         self.trim_long = args.trim_long
         self.filter_long = args.filter_long
-        self. trim_short = args.trim_short
+        self.trim_short = args.trim_short
         self.polish = args.polish
 
         # Performance
@@ -70,16 +71,18 @@ class BGA(object):
         done_trimming_long = self.output_folder + '/done_trimming_long'
         done_filtering = self.output_folder + '/done_filtering_long'
         done_assembling = self.output_folder + '/done_assembling_long'
+        done_polishing_long = self.output_folder + '/done_polishing_long'
         done_trimming_short = self.output_folder + '/done_trimming_short'
-        done_polishing = self.output_folder + '/done_polishing'
+        done_polishing_short = self.output_folder + '/done_polishing_short'
 
         # Output folders to create
         trimmed_folder = self.output_folder + '/1_trimmed_long/'
         filtered_folder = self.output_folder + '/2_filtered_long/'
         assembled_folder = self.output_folder + '/3_assembled_long/'
-        illumina_trimmed_folder = self.output_folder + '/4a_trimmed_short/'
-        illumina_trimmed_report_folder = self.output_folder + '/4b_trimmed_short/'
-        polished_folder = self.output_folder + '/5_polished_assemblies/'
+        polished_long_folder = self.output_folder + '/4_polished_long/'
+        illumina_trimmed_folder = self.output_folder + '/5a_trimmed_short/'
+        illumina_trimmed_report_folder = self.output_folder + '/5b_trimmed_short_report/'
+        polished_short_folder = self.output_folder + '/6_polished_short/'
 
         # Create output folder
         Methods.make_folder(self.output_folder)
@@ -95,29 +98,35 @@ class BGA(object):
 
             # Trim
             if self.trim_long:
-                print('Trimming Nanopore reads with Porechop...')
+                print('Trimming long reads with Porechop...')
                 NanoporeMethods.run_porechop_parallel(self.sample_dict, trimmed_folder,
                                                       self.cpu, self.parallel, done_trimming_long)
 
             # Filter
             if self.filter_long:
-                print('Filtering Nanopore reads with Filtlong...')
+                print('Filtering long reads with Filtlong...')
                 NanoporeMethods.run_filtlong_parallel(self.sample_dict, filtered_folder,
                                                       self.ref_size, self.parallel, done_filtering)
 
             # Assemble
+            # print('Assembling long reads with ', end="", flush=True)
             if self.assembler == 'flye':
-                print('Assembling Nanopore reads with Flye...')
+                print('Assembling long reads with Flye...')
                 NanoporeMethods.assemble_flye_parallel(self.sample_dict, assembled_folder, self.ref_size,
                                                        self.min_size, self.cpu, self.parallel, done_assembling)
                 NanoporeMethods.flye_assembly_stats(assembled_folder, self.output_folder)
             else:  # elif self.assembler == 'shasta':
-                print('Assembling Nanopore reads with Shasta...')
+                print('Assembling long reads with Shasta...')
                 NanoporeMethods.assemble_shasta_parallel(self.sample_dict, assembled_folder,
                                                          self.ref_size, self.cpu, self.parallel, done_assembling)
 
+            # Long read polishing
+            print('Polishing assemblies with long reads using Medaka...')
+            NanoporeMethods.polish_medaka_parallel(self.sample_dict, polished_long_folder, self.model,
+                                                   self.cpu, self.parallel, done_polishing_long)
+
         else:
-            raise Exception('You must provide long reads from Nanopore.')
+            raise Exception('You must provide long reads for the assembly.')
 
         if self.short_reads:
             # Get fastq files
@@ -126,7 +135,7 @@ class BGA(object):
             # Check that we have paired-end reads
             for sample, info_obj in self.sample_dict.items():
                 if not info_obj.illumina.raw.r1 and info_obj.illumina.raw.r1:
-                    raise Exception('Illumina data must be paired-end (R1 and R2 files required).')
+                    raise Exception('Short read data must be paired-end (R1 and R2 files required).')
 
             # Trim
             if self.trim_short:
@@ -137,12 +146,12 @@ class BGA(object):
 
             # Polish
             if self.polish:
-                print('Polishing long read assembly with short reads...')
-                IlluminaMethods.polish(self.sample_dict, polished_folder, self.cpu, done_polishing)
+                print('Polishing long read assembly with short reads using NextPolish, ntEdit and Polypolish...')
+                IlluminaMethods.polish(self.sample_dict, polished_short_folder, self.cpu, done_polishing_short)
         else:
-            raise Exception('You must provide Illumina paired-end data in order to perform polishing.')
+            raise Exception('You must provide paired-end short read data in order to perform short read polishing.')
 
-        print('\tDone!')
+        print('Done!')
 
 
 if __name__ == "__main__":
@@ -185,7 +194,10 @@ if __name__ == "__main__":
     parser.add_argument('--filter-long',
                         required=False, action='store_true',
                         help='Filter long reads with Filtlong prior assembly. Drop bottom 5%%. Default is False.')
-    parser.add_argument('-m', '--model', metavar=)
+    parser.add_argument('--model',
+                        type=str, required=False, default='r941_min_sup_g507',
+                        choices=['r941_min_sup_g507', 'r103_sup_g507'],
+                        help='Medaka model. Default is for R9.4.1 flowcell.')
     parser.add_argument('--polish',
                         required=False, action='store_true',
                         help='Polish long read assembly with Illumina paired-end data. Default is False.')
