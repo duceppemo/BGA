@@ -18,11 +18,12 @@ If you need to perform basecalling to produce fastq files from Nanopore fast5 fi
 * The Illumina paired-end file names must contain "_R1" (forward reads) or "_R2" (reverse reads) to be recognized by the pipeline.
 
 ## Installation
-```commandline
+```bash
 # Create virtual environment
-mamba create -n BGA -c bioconda -y python=3.10.8 nextpolish=1.4.1 bwa=0.7.17 samtools=1.17 porechop=0.2.4 \
-    filtlong=0.2.1 minimap2=2.26 flye=2.9.2 shasta=0.11.1 quast=5.2.0 qualimap=2.2.2d bbmap=39.01 bandage=0.8.1 \
-    fastp=0.23.2 ntedit=1.3.5 polypolish=0.5.0 pandas=1.5.3 seqtk=1.3 medaka=1.8.0 quast=5.2.0
+mamba create -n BGA -c conda-forge -c bioconda -c plotly -y python=3.10.11 nextpolish=1.4.1 bwa=0.7.17 samtools=1.17 \
+    porechop=0.2.4 filtlong=0.2.1 minimap2=2.26 flye=2.9.2 shasta=0.11.1 qualimap=2.2.2d bbmap=39.01 bandage=0.8.1 \
+    fastp=0.22.0 ntedit=1.3.5 polypolish=0.5.0 pandas=1.5.3 seqtk=1.4 quast=5.2.0 medaka=1.8.0 mummer4=4.0.0rc1 \
+    gnuplot=5.4.5 plotly=5.15.0
 
 # Activate virtual environment
 conda activate BGA
@@ -69,7 +70,7 @@ options:
 ```
 ## Examples
 Here we perform a hybrid assembly using both Nanopore and Illumina:  
-```commandline
+```bash
 python bga.py \
     -l /data/nanopore \
     -s /data/illumina \

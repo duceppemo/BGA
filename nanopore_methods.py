@@ -366,6 +366,12 @@ class NanoporeMethods(object):
                 input_fastq = info_obj.nanopore.raw
 
         input_assembly = info_obj.assembly.raw
+        try:
+            t = os.path.exists(input_assembly)
+        except TypeError:
+            delattr(info_obj.assembly, 'raw')
+            print('No assembly available for sample {}'.format(sample))
+            return sample, ''
 
         sample_subfolder = output_folder + sample + '/'
         default_medaka_output = sample_subfolder + 'consensus.fasta'
@@ -391,11 +397,12 @@ class NanoporeMethods(object):
                 subprocess.run(cmd_medaka, stdout=f, stderr=subprocess.STDOUT)
 
             # Rename medaka output assembly
-            os.rename(default_medaka_output, polished_assembly)
+            if os.path.exists(default_medaka_output):
+                os.rename(default_medaka_output, polished_assembly)
 
-            # Reformat fasta to have 80 characters per line
-            Methods.format_fasta(polished_assembly, polished_assembly + '.tmp')
-            os.rename(polished_assembly + '.tmp', polished_assembly)
+                # Reformat fasta to have 80 characters per line
+                Methods.format_fasta(polished_assembly, polished_assembly + '.tmp')
+                os.rename(polished_assembly + '.tmp', polished_assembly)
 
             # Cleanup
             ext = ['.gfa', '.log', '_medaka.fasta', '.bed', '.hdf']
