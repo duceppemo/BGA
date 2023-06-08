@@ -5,6 +5,8 @@ from psutil import virtual_memory
 from bga_methods import Methods
 from nanopore_methods import NanoporeMethods
 from illumina_methods import IlluminaMethods
+from assembly_qc import AssemblyQcMethods
+from importlib import resources
 
 
 __author__ = 'duceppemo'
@@ -13,9 +15,15 @@ __version__ = '0.1'
 
 """
 # Create virtual environment
-mamba create -n BGA -c conda-forge -c bioconda -y python=3.10.11 nextpolish=1.4.1 bwa=0.7.17 samtools=1.6 porechop=0.2.4 \
-    filtlong=0.2.1 minimap2=2.26 flye=2.9.2 shasta=0.11.1 qualimap=2.2.2d bbmap=39.01 bandage=0.8.1 \
-    fastp=0.22.0 ntedit=1.3.5 polypolish=0.5.0 pandas=1.5.3 seqtk=1.4 quast=5.2.0 medaka=1.8.0
+mamba create -n BGA -c conda-forge -c bioconda -c plotly -y python=3.10.11 nextpolish=1.4.1 bwa=0.7.17 samtools=1.17 \
+    porechop=0.2.4 filtlong=0.2.1 minimap2=2.26 flye=2.9.2 shasta=0.11.1 qualimap=2.2.2d bbmap=39.01 bandage=0.8.1 \
+    fastp=0.22.0 ntedit=1.3.5 polypolish=0.5.0 pandas=1.5.3 seqtk=1.4 quast=5.2.0 medaka=1.8.0 mummer4=4.0.0rc1 \
+    gnuplot=5.4.5
+
+plotly=5.14.1
+r-base=4.2.2 r-optparse=1.7.3 r-ggplot2=3.4.2 r-plotly=4.10.1
+
+pip install mummer-idotplot
 
 # Activate virtual environment
 conda activate BGA
@@ -47,6 +55,8 @@ class BGA(object):
         self.parallel = args.parallel
         self.mem = args.memory
 
+        # Resources
+        # self.rscript = resources.Resource(os.path('dependencies', 'mummerCoordsDotPlotly.R'))
         # Data
         self.sample_dict = dict()
 
@@ -76,6 +86,7 @@ class BGA(object):
         done_polishing_long = self.output_folder + '/done_polishing_long'
         done_trimming_short = self.output_folder + '/done_trimming_short'
         done_polishing_short = self.output_folder + '/done_polishing_short'
+        done_qc = self.output_folder + '/done_qc'
 
         # Output folders to create
         trimmed_folder = self.output_folder + '/1_trimmed_long/'
@@ -85,6 +96,7 @@ class BGA(object):
         illumina_trimmed_folder = self.output_folder + '/5a_trimmed_short/'
         illumina_trimmed_report_folder = self.output_folder + '/5b_trimmed_short_report/'
         polished_short_folder = self.output_folder + '/6_polished_short/'
+        qc_folder = self.output_folder + '/7_assembly_qc/'
 
         # Create output folder
         Methods.make_folder(self.output_folder)
@@ -149,9 +161,34 @@ class BGA(object):
             # Polish
             if self.polish:
                 print('Polishing long read assembly with short reads using NextPolish, ntEdit and Polypolish...')
-                IlluminaMethods.polish(self.sample_dict, polished_short_folder, self.cpu, done_polishing_short)
+                IlluminaMethods.polish_parallel(self.sample_dict, polished_short_folder,
+                                                self.cpu, self.parallel, done_polishing_short)
         else:
             raise Exception('You must provide paired-end short read data in order to perform short read polishing.')
+
+        # QC
+        print('Performing assembly QC...')
+        # Quast
+
+
+        # Qualimap long reads
+
+
+        # Qualimap short reads
+
+
+        # Pre- / post- long read polishing comparison
+        # sample_dict, ref_folder, query_folder, output_folder, cpu, parallel
+        print('\tComparing assemblies before and after polishing with medaka.')
+        # AssemblyQcMethods.run_last_parallel(self.sample_dict, assembled_folder, polished_long_folder,
+        #                                     qc_folder, self.cpu, self.parallel)
+        AssemblyQcMethods.run_nucmer_medaka_parallel(self.sample_dict, qc_folder, self.cpu, self.parallel)
+
+        if self.polish:
+            print('\tComparing assemblies before and after polishing with short reads.')
+            # AssemblyQcMethods.run_last_parallel(self.sample_dict, assembled_folder, polished_long_folder,
+            #                                     qc_folder, self.cpu, self.parallel)
+            AssemblyQcMethods.run_nucmer_polypolish_parallel(self.sample_dict, qc_folder, self.cpu, self.parallel)
 
         print('Done!')
 

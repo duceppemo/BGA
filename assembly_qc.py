@@ -1,11 +1,33 @@
 import os
 import io
+import glob
+import stat
+import shutil
 import subprocess
 from concurrent import futures
 from bga_methods import Methods
+import csv
+import plotly.offline as offline
+import plotly.graph_objs as go
+import gzip
+from itertools import groupby
 
 
 class AssemblyQcMethods(object):
+    @staticmethod
+    def fasta_length(input_fasta):
+        with gzip.open(input_fasta, 'rt') if input_fasta.endswith('.gz') else open(input_fasta, 'r') as f:
+
+            # Create iterator in case there are more than 1 contig in reference genome
+            faiter = (x[1] for x in groupby(f, lambda line: line[0] == '>'))
+
+            total_len = 0
+            for header in faiter:
+                # Join all sequence lines of fasta entry in one line, measure its length
+                # and add it to length of any other previous sequences if present
+                total_len += len(''.join(s.rstrip() for s in faiter.__next__()))
+
+            return total_len
 
     @staticmethod
     def run_minimap2(sample, ref, fastq_file, cpu, output_folder, keep_bam):
@@ -62,21 +84,160 @@ class AssemblyQcMethods(object):
                 pass
 
     @staticmethod
-    def run_last(sample, info_obj, output_folder, cpu):
+    def run_last(sample, ref_folder, query_folder, output_folder, cpu):
+        # I/O
+        ref_file = ref_folder + 'all_assemblies/' + sample + '.fasta'
+        ref_name = '.'.join(os.path.basename(ref_file).split('.')[:-1])
+        last_db = output_folder + ref_name + '.lastdb'
+        query_file = query_folder + sample + '/' + sample + '.fasta'
+        last_alignment = output_folder + sample + '.maf'
+        dot_plot_file = output_folder + sample + '_' + os.path.dirname(ref_file).split('/')[-2] \
+                        + '_vs_' + os.path.dirname(query_file).split('/')[-2] + '.png'
+
+        # https://home.cc.umanitoba.ca/~psgendb/tutorials/bioLegato/getgenome/Last.html
+        cmd_lastdb = ['lastdb', '-P', str(cpu), last_db, ref_file]
+        cmd_lastal = ['lastal', '-P', str(cpu), last_db, query_file]
+        cmd_dotplot = ['last-dotplot', last_alignment, dot_plot_file]
+
+        subprocess.run(cmd_lastdb)  # Create a DB with the ref
+        p = subprocess.Popen(cmd_lastal, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        with open(last_alignment, 'w') as f:
+            f.write(p.communicate()[0].decode('utf-8'))
+        subprocess.run(cmd_lastal)  # Compare the polished (query) to the raw (ref)
+        subprocess.run(cmd_dotplot)  # Create dotplot
+
+    @staticmethod
+    def run_last_parallel(sample_dict, ref_folder, query_folder, output_folder, cpu, parallel):
+        Methods.make_folder(output_folder)
+
+        with futures.ThreadPoolExecutor(max_workers=int(parallel)) as executor:
+            args = ((sample, ref_folder, query_folder, output_folder, int(cpu / parallel))
+                    for sample, info_obj in sample_dict.items())
+            for results in executor.map(lambda x: AssemblyQcMethods.run_last(*x), args):
+                pass
+
+    @staticmethod
+    def run_nucmer_medaka(sample, info_obj, output_folder, cpu):
+        # https://mummer4.github.io/tutorial/tutorial.html
+        # https://pypi.org/project/mummer-idotplot/
+
         # I/O
         ref = info_obj.assembly.raw
-        query = info_obj.assembly.polished
-        last_db = output_folder + ref
+        if info_obj.assembly.medaka:
+            query = info_obj.assembly.medaka
+        else:  # no assembly
+            return  # skip
 
-        # Create a DB with the ref
-        # lastdb -cR01 Scer GCF_000146045.2_R64_genomic.fna
-        cmd_lastdb = []
+        ouput_name = output_folder + sample + '_medaka'
 
-        # Compare the polished (query) to the raw (ref)
-        cmd_lastal = ['lastal',
-                      '-P', str(cpu),
-                      last_db, query]
-        
+        # cmd_mummer = ['mummer', '-mum',
+        #               '-threads', str(cpu),
+        #               '-qthreads', str(cpu),
+        #               '-b', '-c', ref, query]
+        # mummer_out = output_folder + sample + '.mums'
+        # p = subprocess.Popen(cmd_mummer, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        # with open(mummer_out, 'w') as f:
+        #     f.write(p.communicate()[0].decode('utf-8'))
+
+        # To plot with plotly
+        # cmd_mummer = ['mummer', '-maxmatch',
+        #               '-F', '-L', '-b', '-l', str(10),
+        #               '-threads', str(cpu),
+        #               '-qthreads', str(cpu),
+        #               ref, query]
+        #
+        # mummer_out = output_folder + sample + '.mums'
+        # p = subprocess.Popen(cmd_mummer, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        # with open(mummer_out, 'w') as f:
+        #     f.write(p.communicate()[0].decode('utf-8'))
+
+        # To plot with GNUplot
+        cmd_nucmer = ['nucmer',
+                      '-t', str(cpu),
+                      '-p', ouput_name,  # Will append '.delta'
+                      '--mincluster={}'.format(100),
+                      ref, query]
+
+        subprocess.run(cmd_nucmer)
+
+        cmd_plot = ['mummerplot',
+                    '-x', '[0,{}]'.format(AssemblyQcMethods.fasta_length(ref)),
+                    '-y', '[0,{}]'.format(AssemblyQcMethods.fasta_length(query)),
+                    '-postscript',
+                    '-p', ouput_name,
+                    ouput_name + '.delta']  # nucmer output
+                    # mummer_out]  # mummer output
+
+        # GNUplot path is not defined in mummerplot when installed via conda
+        Methods.fix_mummerplot()
+
+        # Make plot
+        subprocess.run(cmd_plot, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+
+        # Cleanup files
+        ext = ['.delta', '.fplot', '.gp', '.rplot']
+        for i in ext:
+            for j in glob.glob(output_folder + '/*' + i):
+                if os.path.exists(j):
+                    os.remove(j)
+
+    @staticmethod
+    def run_nucmer_medaka_parallel(sample_dict, output_folder, cpu, parallel):
+        Methods.make_folder(output_folder)
+
+        with futures.ThreadPoolExecutor(max_workers=int(parallel)) as executor:
+            args = ((sample, info_obj, output_folder, int(cpu / parallel))
+                    for sample, info_obj in sample_dict.items())
+            for results in executor.map(lambda x: AssemblyQcMethods.run_nucmer_medaka(*x), args):
+                pass
+
+    @staticmethod
+    def run_nucmer_polypolish(sample, info_obj, output_folder, cpu):
+        # https://mummer4.github.io/tutorial/tutorial.html
+        # https://pypi.org/project/mummer-idotplot/
+
+        # I/O
+        ref = info_obj.assembly.medaka
+        query = info_obj.assembly.polypolish
+        ouput_name = output_folder + sample + '_medaka'
+
+        cmd_nucmer = ['nucmer',
+                      '-t', str(cpu),
+                      '-p', ouput_name,  # Will append '.delta'
+                      '--mincluster={}'.format(100),
+                      ref, query]
+        subprocess.run(cmd_nucmer)
+
+        cmd_plot = ['mummerplot',
+                    '-x', '[0,{}]'.format(AssemblyQcMethods.fasta_length(ref)),
+                    '-y', '[0,{}]'.format(AssemblyQcMethods.fasta_length(query)),
+                    '-postscript',
+                    '-p', ouput_name,
+                    ouput_name + '.delta']  # nucmer output
+
+        # GNUplot path is not defined in mummerplot when installed via conda
+        Methods.fix_mummerplot()
+
+        # Make plot
+        subprocess.run(cmd_plot, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+
+        # Cleanup files
+        ext = ['.delta', '.fplot', '.gp', '.rplot']
+        for i in ext:
+            for j in glob.glob(output_folder + '/*' + i):
+                if os.path.exists(j):
+                    os.remove(j)
+
+    @staticmethod
+    def run_nucmer_polypolish_parallel(sample_dict, output_folder, cpu, parallel):
+        Methods.make_folder(output_folder)
+
+        with futures.ThreadPoolExecutor(max_workers=int(parallel)) as executor:
+            args = ((sample, info_obj, output_folder, int(cpu / parallel))
+                    for sample, info_obj in sample_dict.items())
+            for results in executor.map(lambda x: AssemblyQcMethods.run_nucmer_polypolish(*x), args):
+                pass
+
     @staticmethod
     def short_read_coverage(genome, r1, r2, polished_folder, cpu, sample):
         # I/O

@@ -2,6 +2,7 @@
 import os
 import sys
 import gzip
+import shutil
 import pathlib
 import textwrap
 import subprocess
@@ -195,4 +196,29 @@ class Methods(object):
         # Any additional sequences will be written of the next line
         with open(output_fasta, 'w') as out_handle:
             for title, seq in fasta_dict.items():
-                out_handle.write('>{}\n{}\n'.format(title, '\n'.join(textwrap.wrap(seq, 80, break_long_words=True))))
+                out_handle.write('{}\n{}\n'.format(title, '\n'.join(textwrap.wrap(seq, 80, break_long_words=True))))
+
+
+    @staticmethod
+    def fix_mummerplot():
+        # Fix gnuplot path in mummerplot
+        mummerplot_path = shutil.which('mummerplot')
+        gnuplot_path = shutil.which('gnuplot')
+
+        # Check if file needs to be modified
+        bad = False
+        with open(mummerplot_path, 'r') as f:
+            if '$GNUPLOT_EXE = \'false\'' in f.read():
+                bad = True
+
+        if bad:
+            with open(mummerplot_path + '.tmp', 'w') as out_fh:
+                with open(mummerplot_path, 'r') as in_fh:
+                    for line in in_fh:
+                        if '$GNUPLOT_EXE = \'false\'' in line:
+                            line = 'my $GNUPLOT_EXE = \'{}\';'.format(gnuplot_path)
+                            out_fh.write(line)
+                        else:
+                            out_fh.write(line)
+            shutil.move(mummerplot_path + '.tmp', mummerplot_path)
+            os.chmod(mummerplot_path, 0o0777)

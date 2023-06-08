@@ -54,9 +54,11 @@ class NanoporeMethods(object):
     @staticmethod
     def run_filtlong(sample, info_obj, filtered_folder, genome_size, flag):
         # I/O
-        if info_obj.nanopore.trimmed:
-            input_fastq = info_obj.nanopore.trimmed
-        else:
+        input_fastq = info_obj.nanopore.trimmed
+        try:
+            t = os.path.exists(input_fastq)
+        except TypeError:
+            delattr(info_obj.nanopore, 'trimmed')
             input_fastq = info_obj.nanopore.raw
 
         filtered_fastq = filtered_folder + sample + '.fastq.gz'
@@ -102,12 +104,17 @@ class NanoporeMethods(object):
         output_subfolder = output_folder + sample + '/'
 
         # Figure out which reads we need to use
-        if info_obj.nanopore.filtered:
-            input_fastq = info_obj.nanopore.filtered
-        elif info_obj.nanopore.trimmed:
+        input_fastq = info_obj.nanopore.filtered
+        try:
+            t = os.path.exists(input_fastq)
+        except TypeError:
+            delattr(info_obj.nanopore, 'filtered')
             input_fastq = info_obj.nanopore.trimmed
-        else:
-            input_fastq = info_obj.nanopore.raw
+            try:
+                t = os.path.exists(input_fastq)
+            except TypeError:
+                delattr(info_obj.nanopore, 'trimmed')
+                input_fastq = info_obj.nanopore.raw
 
         if not os.path.exists(flag):
             cmd_flye = ['flye',
@@ -209,12 +216,17 @@ class NanoporeMethods(object):
 
         # I/O
         # Figure out which reads we need to use
-        if info_obj.nanopore.filtered:
-            input_fastq = info_obj.nanopore.filtered
-        elif info_obj.nanopore.trimmed:
+        input_fastq = info_obj.nanopore.filtered
+        try:
+            t = os.path.exists(input_fastq)
+        except TypeError:
+            delattr(info_obj.nanopore, 'filtered')
             input_fastq = info_obj.nanopore.trimmed
-        else:
-            input_fastq = info_obj.nanopore.raw
+            try:
+                t = os.path.exists(input_fastq)
+            except TypeError:
+                delattr(info_obj.nanopore, 'trimmed')
+                input_fastq = info_obj.nanopore.raw
 
         # Unzipped fastq file (needed for shasta)
         unzipped_fastq = output_folder + sample + '.fastq'
@@ -341,12 +353,17 @@ class NanoporeMethods(object):
     def polish_medaka(sample, info_obj, output_folder, model, cpu, flag):
         # I/O
         # Figure out which reads we need to use
-        if info_obj.nanopore.filtered:
-            input_fastq = info_obj.nanopore.filtered
-        elif info_obj.nanopore.trimmed:
+        input_fastq = info_obj.nanopore.filtered
+        try:
+            t = os.path.exists(input_fastq)
+        except TypeError:
+            delattr(info_obj.nanopore, 'filtered')
             input_fastq = info_obj.nanopore.trimmed
-        else:
-            input_fastq = info_obj.nanopore.raw
+            try:
+                t = os.path.exists(input_fastq)
+            except TypeError:
+                delattr(info_obj.nanopore, 'trimmed')
+                input_fastq = info_obj.nanopore.raw
 
         input_assembly = info_obj.assembly.raw
 
@@ -397,7 +414,7 @@ class NanoporeMethods(object):
             args = ((sample, info_obj, output_folder, model, int(cpu / parallel), flag)
                     for sample, info_obj in sample_dict.items())
             for results in executor.map(lambda x: NanoporeMethods.polish_medaka(*x), args):
-                sample_dict[results[0]].assembly.polished = results[1]
+                sample_dict[results[0]].assembly.medaka = results[1]
 
         if os.path.exists(flag):  # Already performed
             print('\tSkipping long read polishing. Already done.')

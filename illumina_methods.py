@@ -238,38 +238,55 @@ class IlluminaMethods(object):
         os.remove(tmp_file)
 
     @staticmethod
-    def polish(sample_dict, polished_folder, cpu, flag):
+    def polish(sample, info_obj, output_folder, cpu, flag):
+        # I/O
+        r1 = info_obj.illumina.trimmed.r1
+        r2 = info_obj.illumina.trimmed.r2
+
+        try:
+            t = os.path.exists(r1)
+        except TypeError:
+            delattr(info_obj.illumina, 'trimmed')
+            r1 = info_obj.illumina.raw.r1
+            r2 = info_obj.illumina.raw.r2
+
+        polished_assembly = output_folder + sample + '.fasta'
+
+        # Check if there is an assembly available for that sample
+        if not info_obj.assembly:
+            print('No assembly found for {}. Skipping polishing.'.format(sample))
+            return
+
+        if not os.path.exists(polished_assembly):
+            print('\t{}'.format(sample))
+            # Create polish folder
+            Methods.make_folder(output_folder)
+
+            # NextPolish
+            genome = info_obj.assembly.medaka
+            genome = IlluminaMethods.run_nextpolish(genome, r1, r2, output_folder, cpu, sample)
+            genome = IlluminaMethods.run_nextpolish(genome, r1, r2, output_folder, cpu, sample)
+
+            # ntEdit
+            genome = IlluminaMethods.run_ntedit(genome, r1, r2, output_folder, cpu, sample)
+
+            # Polypolish
+            for i in range(3):
+                genome = IlluminaMethods.run_polypolish(genome, r1, r2, output_folder, sample)
+
+        return sample, polished_assembly
+
+    @staticmethod
+    def polish_parallel(sample_dict, output_folder, cpu, parallel, flag):
+        Methods.make_folder(output_folder)
+
+        with futures.ThreadPoolExecutor(max_workers=int(parallel)) as executor:
+            args = ((sample, sample_obj, output_folder, int(cpu / parallel), flag)
+                    for sample, sample_obj in sample_dict.items())
+            for results in executor.map(lambda x: IlluminaMethods.polish(*x), args):
+                sample_dict[results[0]].assembly.polypolish = results[1]
+
         if os.path.exists(flag):  # Already performed
-            print('\tSkipping polishing. Already done.')
-        else:
-            # Loop through samples one by one.
-            for sample, info_obj in sample_dict.items():
-                print('\t{}'.format(sample))
-                # I/O
-                if info_obj.illumina.trimmed.r1:
-                    r1 = info_obj.illumina.trimmed.r1
-                    r2 = info_obj.illumina.trimmed.r2
-                else:
-                    r1 = info_obj.illumina.raw.r1
-                    r2 = info_obj.illumina.raw.r2
-
-                # Check if there is an assembly available for that sample
-                if not info_obj.assembly:
-                    print('No assembly found for {}. Skipping polishing.'.format(sample))
-                    continue
-
-                # Create polish folder
-                Methods.make_folder(polished_folder)
-
-                # NextPolish
-                genome = IlluminaMethods.run_nextpolish(info_obj.assembly.polished, r1, r2, polished_folder, cpu, sample)
-                genome = IlluminaMethods.run_nextpolish(genome, r1, r2, polished_folder, cpu, sample)
-
-                # ntEdit
-                genome = IlluminaMethods.run_ntedit(genome, r1, r2, polished_folder, cpu, sample)
-
-                # Polypolish
-                for i in range(3):
-                    genome = IlluminaMethods.run_polypolish(genome, r1, r2, polished_folder, sample)
-
+            print('\tSkipping short read polishing. Already done.')
+        else:  # Create the done flag
             Methods.flag_done(flag)
