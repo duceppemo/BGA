@@ -27,7 +27,8 @@ class BGA(object):
     def __init__(self, args):
         # I/O
         self.long_reads = os.path.abspath(args.long_reads)
-        self.short_reads = os.path.abspath(args.short_reads)
+        if args.short_reads:
+            self.short_reads = os.path.abspath(args.short_reads)
         self.output_folder = os.path.abspath(args.output)
         self.ref_size = args.size
         self.assembler = args.assembler
