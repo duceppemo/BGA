@@ -11,10 +11,33 @@ from psutil import virtual_memory
 from multiprocessing import cpu_count
 
 
+# class Sample(object):
+#     def __getattr__(self, name):
+#         self.__dict__[name] = Sample()
+#         return self.__dict__[name]
+
+
 class Sample(object):
-    def __getattr__(self, name):
-        self.__dict__[name] = Sample()
-        return self.__dict__[name]
+    def __int__(self, nanopore, illumina, assembly):
+        self.nanopore = nanopore
+        self.illumina = illumina
+        self.assembly = assembly
+
+
+class Nanopore(Sample):
+    pass
+
+
+class Illumina(Sample):
+    pass
+
+
+class Assembly(Sample):
+    pass
+
+
+class Bam(Sample):
+    pass
 
 
 class Methods(object):
@@ -64,44 +87,161 @@ class Methods(object):
         return requested_mem
 
     @staticmethod
-    def check_version(log_file):
+    def check_dependencies(output_folder):
+        """
+        python=3.10.11 nextpolish=1.4.1 bwa=0.7.17 samtools=1.17 \
+        porechop=0.2.4 filtlong=0.2.1 minimap2=2.26 flye=2.9.2 shasta=0.11.1 qualimap=2.2.2d bbmap=39.01 bandage=0.8.1 \
+        fastp=0.22.0 ntedit=1.3.5 polypolish=0.5.0 pandas=1.5.3 seqtk=1.4 quast=5.2.0 medaka=1.8.0 mummer4=4.0.0rc1 \
+        gnuplot=5.4.5 plotly=5.15.0
+        """
+        Methods.make_folder(output_folder)
+        log_file = output_folder + '/log.txt'
+
         # Not being used right now because versions are captured in the requirements.txt file
         with open(log_file, 'w') as f:
             # Python
-            p = subprocess.Popen(['python', '--version'])
-            stderr, stdout = p.communicate()
             # Python 3.10.11  # Outputs just this line
+            stdout = subprocess.check_output(['python', '--version'], stderr=subprocess.STDOUT)
+            version = stdout.decode('utf-8').split(' ')[1].rstrip()
+            f.write('Python v{}\n'.format(version))
+
+            # Seqtk
+            # Version: 1.4-r122  # Got to fetch this line
+            try:
+                stdout = subprocess.check_output(['seqtk'], stderr=subprocess.STDOUT)
+            except subprocess.CalledProcessError as e:
+                stdout = e.output
+            for line in stdout.decode('utf-8').split('\n'):
+                if line.startswith('Version:'):
+                    version = line.split(' ')[1]
+                    f.write('Seqtk v{}\n'.format(version))
+                    break
+
+            # Quast
+            # QUAST v5.2.0  # Only output this line
+            stdout = subprocess.check_output(['quast', '--version'], stderr=subprocess.STDOUT)
+            f.write('{}\n'.format(stdout.decode('utf-8').rstrip()))
+
+            # medaka
+            # medaka 1.8.0  # only output this line
+            stdout = subprocess.check_output(['medaka', '--version'], stderr=subprocess.STDOUT)
+            version = stdout.decode('utf-8').split(' ')[1].rstrip()
+            f.write('Medaka v{}\n'.format(version))
+
+            # mummer
+            # 4.0.0rc1  # only output this line
+            stdout = subprocess.check_output(['mummer', '--version'], stderr=subprocess.STDOUT)
+            f.write('Mummer v{}\n'.format(stdout.decode('utf-8').rstrip()))
+
+            # Nextpolish
+            # nextPolish 1.4.1  # only this line output
+            stdout = subprocess.check_output(['nextPolish', '--version'], stderr=subprocess.STDOUT)
+            version = stdout.decode('utf-8').split(' ')[1].rstrip()
+            f.write('NextPolish v{}\n'.format(version))
+
+            # Flye
+            # 2.9.2-b1786  # only output this line
+            stdout = subprocess.check_output(['flye', '--version'], stderr=subprocess.STDOUT)
+            f.write('Flye v{}\n'.format(stdout.decode('utf-8').rstrip()))
+
+            # Shasta
+            # Shasta Release 0.11.1  # Oly output this line
+            stdout = subprocess.check_output(['shasta', '--version'], stderr=subprocess.STDOUT)
+            version = stdout.decode('utf-8').split(' ')[2].rstrip()
+            f.write('Shasta v{}\n'.format(version))
+
+            # Qualimap
+            # QualiMap v.2.2.2-dev  # Got to fetch this line
+            stdout = subprocess.check_output(['qualimap', '--version'], stderr=subprocess.STDOUT)
+            for line in stdout.decode('utf-8').split('\n'):
+                if line.startswith('QualiMap v'):
+                    version = line.split(' ')[1]
+                    f.write('Qualimap v{}\n'.format(version))
+                    break
+
+            # Bandage
+            # Version: 0.8.1  # only output this line
+            stdout = subprocess.check_output(['Bandage', '--version'], stderr=subprocess.STDOUT)
+            version = stdout.decode('utf-8').split(' ')[1].rstrip()
+            f.write('Bandage v{}\n'.format(version))
+
+            # Fastp
+            # fastp 0.22.0  # only output this line
+            stdout = subprocess.check_output(['fastp', '--version'], stderr=subprocess.STDOUT)
+            version = stdout.decode('utf-8').split(' ')[1].rstrip()
+            f.write('Fastp v{}\n'.format(version))
+
+            # ntedit
+            # ntedit version 1.3.5  # Got to fetch this line
+            stdout = subprocess.check_output(['ntedit', '--version'], stderr=subprocess.STDOUT)
+            for line in stdout.decode('utf-8').split('\n'):
+                if line.startswith('ntedit version'):
+                    version = line.split(' ')[2]
+                    f.write('ntEdit v{}\n'.format(version))
+                    break
+
+            # Polypolish
+            # Polypolish v0.5.0  # only output this line
+            stdout = subprocess.check_output(['polypolish', '--version'], stderr=subprocess.STDOUT)
+            version = stdout.decode('utf-8').split(' ')[1].rstrip()
+            f.write('Polypolish {}\n'.format(version))
 
             # Porechop
-            p = subprocess.Popen(['porechop', '--version'])
-            stderr, stdout = p.communicate()
             # 0.2.4  # Outputs just this line
+            stdout = subprocess.check_output(['porechop', '--version'], stderr=subprocess.STDOUT)
+            f.write('Porechop v{}\n'.format(stdout.decode('utf-8').rstrip()))
 
-            # BBmap suite
-            p = subprocess.Popen(['bbduk.sh', '--version'])
-            stderr, stdout = p.communicate()
+            # BBtools suite
             # BBMap version 39.01  # Got to fetch that line from output
+            stdout = subprocess.check_output(['bbduk.sh', '--version'], stderr=subprocess.STDOUT)
+            for line in stdout.decode('utf-8').split('\n'):
+                if line.startswith('BBMap version'):
+                    version = line.split(' ')[2]
+                    f.write('BBtools v{}\n'.format(version))
+                    break
 
             # Filtlong
-            p = subprocess.Popen(['filtlong', '--version'])
-            stderr, stdout = p.communicate()
+            stdout = subprocess.check_output(['filtlong', '--version'], stderr=subprocess.STDOUT)
             # Filtlong v0.2.1  # Outputs just this line
+            f.write('{}\n'.format(stdout.decode('utf-8').rstrip()))
 
             # SAMtools
-            p = subprocess.Popen(['samtools'])
-            stderr, stdout = p.communicate()
-            # Version: 1.17 (using htslib 1.17)  # Got to fetch that line from output
+            # samtools 1.17  # Got to fetch that line from output
+            stdout = subprocess.check_output(['samtools', 'version'], stderr=subprocess.STDOUT)
+            for line in stdout.decode('utf-8').split('\n'):
+                if line.startswith('samtools'):
+                    version = line.split(' ')[1]
+                    f.write('SAMtools v{}\n'.format(version))
+                    break
 
+            # BCFtools
+            # BCFtools 1.17  # Got to fetch that line from output
+            try:
+                stdout = subprocess.check_output(['bcftools', 'version'], stderr=subprocess.STDOUT)
+            except subprocess.CalledProcessError:
+                raise Exception("BCFtools not properly installed.")
+            for line in stdout.decode('utf-8').split('\n'):
+                if line.startswith('bcftools'):
+                    version = line.split(' ')[1]
+                    f.write('BCFtools v{}\n'.format(version))
+                    break
 
             # Minimap2
-            p = subprocess.Popen(['minimap2', '--version'])
-            stderr, stdout = p.communicate()
             # 2.26-r1175  # Outputs just this line
+            stdout = subprocess.check_output(['minimap2', '--version'], stderr=subprocess.STDOUT)
+            f.write('Minimap2 v{}\n'.format(stdout.decode('utf-8').rstrip()))
 
-            # bwa
-            p = subprocess.Popen(['bwa'])
-            stderr, stdout = p.communicate()
+            # BWA
             # Version: 0.7.17-r1188  # Got to fetch that line from output
+            try:
+                stdout = subprocess.check_output(['bwa'], stderr=subprocess.STDOUT)
+            except subprocess.CalledProcessError as e:
+                stdout = e.output
+            for line in stdout.decode('utf-8').split('\n'):
+                if line.startswith('Version:'):
+                    version = line.split(' ')[1]
+                    f.write('BWA v{}\n'.format(version))
+                    break
 
     @staticmethod
     def make_folder(folder):
@@ -122,9 +262,19 @@ class Methods(object):
                     if filename.endswith('gz'):
                         sample = sample.split('.')[0]
 
+                    # Initiate objects
                     sample_obj = Sample()
+                    sample_obj.nanopore = Nanopore()
+                    sample_obj.illumina = Illumina()  # Prep dictionary for Illumina, if present
+                    sample_obj.assembly = Assembly()  # Prep dictionary for assembly
+                    sample_obj.bam = Bam()  # Prep dictionary for mapping
+
+                    # Add path to object
                     sample_dict[sample] = sample_obj
                     sample_dict[sample].nanopore.raw = file_path
+                    sample_dict[sample].illumina.raw = ''
+                    sample_dict[sample].assembly.raw = ''
+                    sample_dict[sample].bam.raw = ''
 
         if not sample_dict:
             raise Exception('Sample dictionary empty!')
@@ -143,10 +293,16 @@ class Methods(object):
                     if filename.endswith('gz'):
                         sample = sample.split('.')[0]
 
+                    # Initiate objects
+                    sample_obj = Sample()
+                    sample_obj.illumina = Illumina()
+
+                    if not sample_dict[sample].illumina.raw:
+                        sample_dict[sample].illumina.raw = list()
                     if '_R1' in filename:
-                        sample_dict[sample].illumina.raw.r1 = file_path
+                        sample_dict[sample].illumina.raw.insert(0, file_path)
                     elif '_R2' in filename:
-                        sample_dict[sample].illumina.raw.r2 = file_path
+                        sample_dict[sample].illumina.raw.insert(1, file_path)
 
         return sample_dict
 

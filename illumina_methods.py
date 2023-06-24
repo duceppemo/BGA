@@ -1,10 +1,10 @@
 import os
+import io
+import glob
 import shutil
 import subprocess
 from concurrent import futures
-import io
 from bga_methods import Methods
-import glob
 
 
 class IlluminaMethods(object):
@@ -88,6 +88,45 @@ class IlluminaMethods(object):
         # Index bam file
         cmd = ['samtools', 'index', '-@', str(cpu), out_bam]
         subprocess.run(cmd)
+
+    @staticmethod
+    def map_minimap2_short_paired(genome, r1, r2, output_folder, cpu, sample):
+        # I/O
+        output_bam = output_folder + sample + '.bam'
+
+        # cmd_bwa_mem = ['bwa', 'mem', '-t', str(cpu), genome, r1, r2]
+        minimap2_cmd = ['minimap2', '-a', '-x', 'sr', '-t', str(cpu), genome, r1]
+        if os.path.exists(r2):
+            minimap2_cmd += [r2]
+        samtools_view_cmd = ['samtools', 'view', '-@', str(cpu), '-F', '4', '-h', '-']
+        samtools_fixmate_cmd = ['samtools', 'fixmate', '-@', str(cpu), '-m', '-', '-']
+        samtools_sort_cmd = ['samtools', 'sort', '-@', str(cpu), '-']
+        samtools_markdup_cmd = ['samtools', 'markdup', '-r', '-@', str(cpu), '-', output_bam]
+        samtools_index_cmd = ['samtools', 'index', output_bam]
+
+        p1 = subprocess.Popen(minimap2_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        p2 = subprocess.Popen(samtools_view_cmd, stdin=p1.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        p1.stdout.close()
+        if os.path.exists(r2):
+            p3 = subprocess.Popen(samtools_fixmate_cmd, stdin=p2.stdout, stdout=subprocess.PIPE,
+                                  stderr=subprocess.DEVNULL)
+            p2.stdout.close()
+            p4 = subprocess.Popen(samtools_sort_cmd, stdin=p3.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            p3.stdout.close()
+            p5 = subprocess.Popen(samtools_markdup_cmd, stdin=p4.stdout, stdout=subprocess.PIPE,
+                                  stderr=subprocess.DEVNULL)
+            p4.stdout.close()
+            p5.communicate()
+        else:
+            p3 = subprocess.Popen(samtools_sort_cmd, stdin=p2.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            p2.stdout.close()
+            p4 = subprocess.Popen(samtools_markdup_cmd, stdin=p3.stdout, stdout=subprocess.PIPE,
+                                  stderr=subprocess.DEVNULL)
+            p3.stdout.close()
+            p4.communicate()
+
+        # Index bam file
+        subprocess.run(samtools_index_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
     @staticmethod
     def fix_fasta(input_fasta, output_fasta):

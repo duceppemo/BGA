@@ -1,8 +1,6 @@
 import os
 import io
 import glob
-import stat
-import shutil
 import subprocess
 from concurrent import futures
 from bga_methods import Methods
@@ -16,18 +14,21 @@ from itertools import groupby
 class AssemblyQcMethods(object):
     @staticmethod
     def fasta_length(input_fasta):
-        with gzip.open(input_fasta, 'rt') if input_fasta.endswith('.gz') else open(input_fasta, 'r') as f:
+        if os.path.exists(input_fasta):
+            with gzip.open(input_fasta, 'rt') if input_fasta.endswith('.gz') else open(input_fasta, 'r') as f:
 
-            # Create iterator in case there are more than 1 contig in reference genome
-            faiter = (x[1] for x in groupby(f, lambda line: line[0] == '>'))
+                # Create iterator in case there are more than 1 contig in reference genome
+                faiter = (x[1] for x in groupby(f, lambda line: line[0] == '>'))
 
-            total_len = 0
-            for header in faiter:
-                # Join all sequence lines of fasta entry in one line, measure its length
-                # and add it to length of any other previous sequences if present
-                total_len += len(''.join(s.rstrip() for s in faiter.__next__()))
+                total_len = 0
+                for header in faiter:
+                    # Join all sequence lines of fasta entry in one line, measure its length
+                    # and add it to length of any other previous sequences if present
+                    total_len += len(''.join(s.rstrip() for s in faiter.__next__()))
 
-            return total_len
+                return total_len
+        else:
+            return '0'
 
     @staticmethod
     def run_minimap2(sample, ref, fastq_file, cpu, output_folder, keep_bam):
@@ -123,33 +124,16 @@ class AssemblyQcMethods(object):
 
         # I/O
         ref = info_obj.assembly.raw
-        if info_obj.assembly.medaka:
-            query = info_obj.assembly.medaka
-        else:  # no assembly
-            return  # skip
+        if not os.path.exists(ref):  # No assembly
+            delattr(info_obj.assembly, 'raw')
+            return
+
+        query = info_obj.assembly.medaka
+        if not os.path.exists(query): # No polished assembly
+            delattr(info_obj.assembly, 'query')
+            return
 
         ouput_name = output_folder + sample + '_medaka'
-
-        # cmd_mummer = ['mummer', '-mum',
-        #               '-threads', str(cpu),
-        #               '-qthreads', str(cpu),
-        #               '-b', '-c', ref, query]
-        # mummer_out = output_folder + sample + '.mums'
-        # p = subprocess.Popen(cmd_mummer, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        # with open(mummer_out, 'w') as f:
-        #     f.write(p.communicate()[0].decode('utf-8'))
-
-        # To plot with plotly
-        # cmd_mummer = ['mummer', '-maxmatch',
-        #               '-F', '-L', '-b', '-l', str(10),
-        #               '-threads', str(cpu),
-        #               '-qthreads', str(cpu),
-        #               ref, query]
-        #
-        # mummer_out = output_folder + sample + '.mums'
-        # p = subprocess.Popen(cmd_mummer, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        # with open(mummer_out, 'w') as f:
-        #     f.write(p.communicate()[0].decode('utf-8'))
 
         # To plot with GNUplot
         cmd_nucmer = ['nucmer',
@@ -285,5 +269,146 @@ class AssemblyQcMethods(object):
             os.remove(polished_folder + "*" + i)
 
     @staticmethod
-    def run_quast():
-        pass
+    def map_minimap2(sample, info_obj, read_type, output_folder, cpu):
+        # I/O
+        r2 = ''
+        # Figure out which reads we need to use
+        if read_type == 'nanopore':
+            try:
+                r1 = info_obj.nanopore.trimmed
+            except AttributeError:
+                r1 = info_obj.nanopore.raw
+        else:  # elin read_type = 'illumina'
+            try:
+                input_fastq = info_obj.illumina.trimmed
+            except AttributeError:
+                input_fastq = info_obj.illumina.raw
+            r1 = input_fastq[0]
+            r2 = ''
+            if len(input_fastq):
+                r2 = input_fastq[1]
+
+        # Assembly
+        try:
+            ref = info_obj.assembly.polypolish
+        except AttributeError:
+            try:
+                ref = info_obj.assembly.medaka
+            except AttributeError:
+                ref = info_obj.assembly.raw
+
+        output_bam = output_folder + sample + '.bam'
+
+        if read_type == 'nanopore':
+            minimap2_cmd = ['minimap2', '-a', '-x', 'map-ont', '-t', str(cpu), ref, r1]
+        else:  # elsif read_type = 'illumina'
+            minimap2_cmd = ['minimap2', '-a', '-x', 'sr', '-t', str(cpu), ref, r1]
+            if r2:
+                minimap2_cmd += [r2]
+        samtools_view_cmd = ['samtools', 'view', '-@', str(cpu), '-F', '4', '-h', '-']
+        samtools_fixmate_cmd = ['samtools', 'fixmate', '-@', str(cpu), '-m', '-', '-']
+        samtools_sort_cmd = ['samtools', 'sort', '-@', str(cpu), '-']
+        samtools_markdup_cmd = ['samtools', 'markdup', '-r', '-@', str(cpu), '-', output_bam]
+        samtools_index_cmd = ['samtools', 'index', output_bam]
+
+        p1 = subprocess.Popen(minimap2_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        p2 = subprocess.Popen(samtools_view_cmd, stdin=p1.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        p1.stdout.close()
+        if os.path.exists(ref):
+            if os.path.exists(r2):
+                p3 = subprocess.Popen(samtools_fixmate_cmd, stdin=p2.stdout, stdout=subprocess.PIPE,
+                                      stderr=subprocess.DEVNULL)
+                p2.stdout.close()
+                p4 = subprocess.Popen(samtools_sort_cmd, stdin=p3.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                p3.stdout.close()
+                p5 = subprocess.Popen(samtools_markdup_cmd, stdin=p4.stdout, stdout=subprocess.PIPE,
+                                      stderr=subprocess.DEVNULL)
+                p4.stdout.close()
+                p5.communicate()
+            else:
+                p3 = subprocess.Popen(samtools_sort_cmd, stdin=p2.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                p2.stdout.close()
+                p4 = subprocess.Popen(samtools_markdup_cmd, stdin=p3.stdout, stdout=subprocess.PIPE,
+                                      stderr=subprocess.DEVNULL)
+                p3.stdout.close()
+                p4.communicate()
+
+            # Index bam file
+            subprocess.run(samtools_index_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+        else:
+            output_bam = ''
+
+        return sample, output_bam
+
+    @staticmethod
+    def map_minimap2_parallel(sample_dict, output_folder, read_type, cpu, parallel):
+        Methods.make_folder(output_folder)
+
+        with futures.ThreadPoolExecutor(max_workers=int(parallel)) as executor:
+            # sample, info_obj, read_type, output_folder, cpu
+            args = ((sample, info_obj, read_type, output_folder, int(cpu / parallel))
+                    for sample, info_obj in sample_dict.items())
+            for results in executor.map(lambda x: AssemblyQcMethods.map_minimap2(*x), args):
+                sample_dict[results[0]].bam.raw = results[1]
+
+    @staticmethod
+    def run_qualimap(sample, info_obj, output_folder, cpu, mem):
+        # I/O
+        bam = info_obj.bam.raw
+        if bam:  # No bam file, skip this step
+            sample_subfolder = output_folder + sample + '/'
+            Methods.make_folder(sample_subfolder)
+
+            cmd = ['qualimap', 'bamqc',
+                   # '--paint-chromosome-limits',  # not great with short read assemblies which result in many contigs
+                   '-bam', bam,
+                   '--java-mem-size={}G'.format(mem),
+                   '-nt', str(cpu),
+                   '-outdir', sample_subfolder,
+                   '-outformat', 'HTML']
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+
+            # Rename html report
+            os.rename(sample_subfolder + 'qualimapReport.html', sample_subfolder + sample + '.html')
+
+    @staticmethod
+    def run_qualimap_parallel(sample_dict, output_folder, cpu, mem, parallel):
+        Methods.make_folder(output_folder)
+
+        with futures.ThreadPoolExecutor(max_workers=int(parallel)) as executor:
+            # sample, info_obj, output_folder, cpu, mem
+            args = ((sample, info_obj, output_folder, int(cpu / parallel), int(mem / parallel))
+                    for sample, info_obj in sample_dict.items())
+            for results in executor.map(lambda x: AssemblyQcMethods.run_qualimap(*x), args):
+                pass
+
+        # Cleanup bam files
+        ext = ['.bam', '.bai']
+        for i in ext:
+            file_list = glob.glob(output_folder + '*' + i)
+            for j in file_list:
+                if os.path.exists(j):
+                    os.remove(j)
+
+    @staticmethod
+    def run_quast(sample_dict, output_folder, cpu):
+        assembly_list = list()
+
+        for sample, info_obj in sample_dict.items():
+            try:
+                assembly = info_obj.assembly.polypolish
+            except AttributeError:
+                try:
+                    assembly = info_obj.assembly.medaka
+                except AttributeError:
+                    assembly = info_obj.assembly.raw
+            if os.path.exists(assembly):
+                assembly_list.append(assembly)
+
+        cmd = ['quast.py',
+               '--output-dir', output_folder,
+               '--threads', str(cpu),
+               '--min-contig', str(1000),
+               '--no-icarus']
+        cmd += assembly_list  # All the genome files
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)

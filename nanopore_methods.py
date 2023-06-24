@@ -1,19 +1,20 @@
 import os
 import gzip
+import shutil
 import warnings
 import subprocess
 import pandas as pd
 from glob import glob
 from shutil import move
 from concurrent import futures
-from bga_methods import Methods
+from bga_methods import Methods, Sample, Assembly
 
 
-class Sample(object):
-    # Enable creation of multiple "dots" in a single time for an object attribute
-    def __getattr__(self, name):
-        self.__dict__[name] = Sample()
-        return self.__dict__[name]
+# class Sample(object):
+#     # Enable creation of multiple "dots" in a single time for an object attribute
+#     def __getattr__(self, name):
+#         self.__dict__[name] = Sample()
+#         return self.__dict__[name]
 
 
 class NanoporeMethods(object):
@@ -95,28 +96,21 @@ class NanoporeMethods(object):
             Methods.flag_done(flag)
 
     @staticmethod
-    def assemble_flye(sample, info_obj, output_folder, genome_size, min_size, cpu, flag):
+    def assemble_flye(sample, info_obj, output_folder, gfa_folder, genome_size, min_size, cpu, flag):
         # I/O
-        assemblies_folder = output_folder + 'all_assemblies/'
-        output_assembly = assemblies_folder + sample + '.fasta'
-
-        # Create a subfolder for each sample
-        output_subfolder = output_folder + sample + '/'
+        output_assembly = output_folder + sample + '.fasta'
+        output_subfolder = output_folder + sample + '/'  # Create a subfolder for each sample
 
         # Figure out which reads we need to use
-        input_fastq = info_obj.nanopore.filtered
         try:
-            t = os.path.exists(input_fastq)
-        except TypeError:
-            delattr(info_obj.nanopore, 'filtered')
-            input_fastq = info_obj.nanopore.trimmed
+            input_fastq = info_obj.nanopore.filtered
+        except AttributeError:
             try:
-                t = os.path.exists(input_fastq)
-            except TypeError:
-                delattr(info_obj.nanopore, 'trimmed')
+                input_fastq = info_obj.nanopore.trimmed
+            except AttributeError:
                 input_fastq = info_obj.nanopore.raw
 
-        if not os.path.exists(flag):
+        if not os.path.exists(flag):  # Skip if already preformed (flag file present)
             cmd_flye = ['flye',
                         '--nano-hq', input_fastq,
                         '--threads', str(cpu),
@@ -128,37 +122,39 @@ class NanoporeMethods(object):
                 cmd_flye += ['--genome-size', str(genome_size)]
 
             print('\t{}'.format(sample))
+            Methods.make_folder(output_subfolder)
             subprocess.run(cmd_flye, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
             # Rename and move assembly file
-            Methods.make_folder(assemblies_folder)
-            Methods.make_folder(output_subfolder)
-            if os.path.exists(output_subfolder + 'assembly.fasta'):
+            if os.path.exists(output_subfolder + 'assembly.fasta'):  # Assembly was successful
                 move(output_subfolder + 'assembly.fasta', output_assembly)
 
                 # Rename and move assembly graph file
-                assembly_graph_folder = output_folder + 'assembly_graphs/'
-                Methods.make_folder(assembly_graph_folder)
-                move(output_subfolder + 'assembly_graph.gfa', assembly_graph_folder + sample + '.gfa')
+                Methods.make_folder(gfa_folder)
+                move(output_subfolder + 'assembly_graph.gfa', gfa_folder + sample + '.gfa')
 
                 # Assembly graph
                 cmd_bandage = ['Bandage', 'image',
-                               '{}'.format(assembly_graph_folder + sample + '.gfa'),
-                               '{}'.format(assembly_graph_folder + sample + '.png')]
-                subprocess.run(cmd_bandage)
-            else:
-                warnings.warn('No assembly for {}!'.format(sample))
+                               '{}'.format(gfa_folder + sample + '.gfa'),
+                               '{}'.format(gfa_folder + sample + '.png')]
+                subprocess.run(cmd_bandage, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+            else:  # No assembly output
+                output_assembly = ''
 
         return sample, output_assembly
 
     @staticmethod
-    def assemble_flye_parallel(sample_dict, output_folder, genome_size, min_size, cpu, parallel, flag):
+    def assemble_flye_parallel(sample_dict, output_folder, gfa_folder, genome_size, min_size, cpu, parallel, flag):
         Methods.make_folder(output_folder)
 
         with futures.ThreadPoolExecutor(max_workers=int(parallel)) as executor:
-            args = ((sample, info_obj, output_folder, genome_size, min_size, int(cpu / parallel), flag)
+            args = ((sample, info_obj, output_folder, gfa_folder, genome_size, min_size, int(cpu / parallel), flag)
                     for sample, info_obj in sample_dict.items())
             for results in executor.map(lambda x: NanoporeMethods.assemble_flye(*x), args):
+                # Initiate object
+                my_sample = Sample()
+                my_sample.assembly = Assembly()
+
                 sample_dict[results[0]].assembly.raw = results[1]
 
         if os.path.exists(flag):  # Already performed
@@ -200,7 +196,7 @@ class NanoporeMethods(object):
                         mean_cov = line.split('\t')[-1]
 
                 data_dict = {'Sample': [sample],
-                             'TotalBases': [read_len],
+                             'TotalReadLength': [read_len],
                              'ReadsN50': [n50],
                              'AssemblyLength': [assembly_len],
                              'Contigs': [contigs],
@@ -208,31 +204,30 @@ class NanoporeMethods(object):
 
                 df = pd.concat([df, pd.DataFrame.from_dict(data_dict)], axis='index', ignore_index=True)
 
+            # Remove assembly folder
+            sub_folder = os.path.dirname(log_file)
+            shutil.rmtree(sub_folder)
+
         # Convert df to tsv file
         df.to_csv(output_stats_file, sep='\t', index=False)
 
     @staticmethod
-    def assemble_shasta(sample, info_obj, output_folder, min_size, cpu, flag):
+    def assemble_shasta(sample, info_obj, output_folder, gfa_folder, min_size, cpu, flag):
 
         # I/O
         # Figure out which reads we need to use
-        input_fastq = info_obj.nanopore.filtered
         try:
-            t = os.path.exists(input_fastq)
-        except TypeError:
-            delattr(info_obj.nanopore, 'filtered')
-            input_fastq = info_obj.nanopore.trimmed
+            input_fastq = info_obj.nanopore.filtered
+        except AttributeError:
             try:
-                t = os.path.exists(input_fastq)
-            except TypeError:
-                delattr(info_obj.nanopore, 'trimmed')
+                input_fastq = info_obj.nanopore.trimmed
+            except AttributeError:
                 input_fastq = info_obj.nanopore.raw
 
         # Unzipped fastq file (needed for shasta)
         unzipped_fastq = output_folder + sample + '.fastq'
 
-        assemblies_folder = output_folder + 'all_assemblies/'
-        output_assembly = assemblies_folder + sample + '.fasta'
+        output_assembly = output_folder + sample + '.fasta'
         output_subfolder = output_folder + sample + '/'  # Create a subfolder for each sample
 
         if not os.path.exists(flag):
@@ -256,40 +251,41 @@ class NanoporeMethods(object):
                 subprocess.run(cmd_ungzip, stdout=f)
 
             # Run shasta assembler
+            # Need this file to get the assembly stats
             shasta_stdout = output_folder + sample + '_shasta_stdout.txt'
             with open(shasta_stdout, 'w') as f:
                 subprocess.run(cmd_shasta, stdout=f, stderr=subprocess.DEVNULL)
+            # subprocess.run(cmd_shasta, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
             # Cleanup temporary files
             subprocess.run(cmd_shasta_clean, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
             os.remove(unzipped_fastq)
 
             # Rename and move assembly file
-            Methods.make_folder(assemblies_folder)
-            if os.path.exists(output_subfolder + 'Assembly.fasta'):
+            # Assembly and gfa files are always created, but empty if no assemblies
+            if os.stat(output_subfolder + 'Assembly.fasta').st_size != 0:  # If assembly file not empty
                 move(output_subfolder + 'Assembly.fasta', output_assembly)
 
                 # Rename and move assembly graph file
-                assembly_graph_folder = output_folder + 'assembly_graphs/'
-                Methods.make_folder(assembly_graph_folder)
-                move(output_subfolder + 'Assembly.gfa', assembly_graph_folder + sample + '.gfa')
+                Methods.make_folder(gfa_folder)
+                move(output_subfolder + 'Assembly.gfa', gfa_folder + sample + '.gfa')
 
                 # Assembly graph
                 cmd_bandage = ['Bandage', 'image',
-                               '{}'.format(assembly_graph_folder + sample + '.gfa'),
-                               '{}'.format(assembly_graph_folder + sample + '.png')]
-                subprocess.run(cmd_bandage)
+                               '{}'.format(gfa_folder + sample + '.gfa'),
+                               '{}'.format(gfa_folder + sample + '.png')]
+                subprocess.run(cmd_bandage, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
             else:
-                warnings.warn('No assembly for {}!'.format(sample))
+                output_assembly = ''
 
         return sample, output_assembly
 
     @staticmethod
-    def assemble_shasta_parallel(sample_dict, output_folder, min_size, cpu, parallel, flag):
+    def assemble_shasta_parallel(sample_dict, output_folder, gfa_folder, min_size, cpu, parallel, flag):
         Methods.make_folder(output_folder)
 
         with futures.ThreadPoolExecutor(max_workers=int(parallel)) as executor:
-            args = ((sample, info_obj, output_folder, min_size, int(cpu / parallel), flag)
+            args = ((sample, info_obj, output_folder, gfa_folder, min_size, int(cpu / parallel), flag)
                     for sample, info_obj in sample_dict.items())
             for results in executor.map(lambda x: NanoporeMethods.assemble_shasta(*x), args):
                 sample_dict[results[0]].assembly.raw = results[1]
@@ -342,41 +338,45 @@ class NanoporeMethods(object):
 
                 df = pd.concat([df, pd.DataFrame.from_dict(data_dict)], axis='index', ignore_index=True)
 
+                # Remove log files
+                os.remove(log_file)
+
         # Convert df to tsv file
         df.to_csv(output_stats_file, sep='\t', index=False)
 
-        # Remove log files
-        for log_file in log_list:
-            os.remove(log_file)
+        # Delete sample subfolder
+        for root, directories, filenames in os.walk(assembly_folder):
+            for folder in directories:
+                shutil.rmtree(os.path.join(root, folder))
 
     @staticmethod
     def polish_medaka(sample, info_obj, output_folder, model, cpu, flag):
         # I/O
         # Figure out which reads we need to use
-        input_fastq = info_obj.nanopore.filtered
         try:
-            t = os.path.exists(input_fastq)
-        except TypeError:
-            delattr(info_obj.nanopore, 'filtered')
-            input_fastq = info_obj.nanopore.trimmed
+            input_fastq = info_obj.nanopore.filtered
+        except AttributeError:
             try:
-                t = os.path.exists(input_fastq)
-            except TypeError:
-                delattr(info_obj.nanopore, 'trimmed')
+                input_fastq = info_obj.nanopore.trimmed
+            except AttributeError:
                 input_fastq = info_obj.nanopore.raw
 
-        input_assembly = info_obj.assembly.raw
-        try:
-            t = os.path.exists(input_assembly)
-        except TypeError:
-            delattr(info_obj.assembly, 'raw')
-            print('No assembly available for sample {}'.format(sample))
+        if info_obj.assembly.raw:
+            input_assembly = info_obj.assembly.raw
+        else:
+            print('\tNo assembly available for sample {}'.format(sample))
             return sample, ''
+
+        # try:
+        #     input_assembly = info_obj.assembly.raw
+        # except AttributeError:
+        #     print('No assembly available for sample {}'.format(sample))
+        #     return sample, ''
 
         sample_subfolder = output_folder + sample + '/'
         default_medaka_output = sample_subfolder + 'consensus.fasta'
-        polished_assembly = sample_subfolder + sample + '.fasta'
-        medaka_stdout = sample_subfolder + sample + '_medaka_stdout.txt'
+        polished_assembly = output_folder + sample + '.fasta'
+        # medaka_stdout = sample_subfolder + sample + '_medaka_stdout.txt'
 
         cmd_medaka = ['medaka_consensus',
                       '-i', input_fastq,
@@ -393,8 +393,11 @@ class NanoporeMethods(object):
             print('\t{}'.format(sample))
 
             # Run medaka and save STDOUT to file
-            with open(medaka_stdout, 'w') as f:
-                subprocess.run(cmd_medaka, stdout=f, stderr=subprocess.STDOUT)
+            # Had to do this to figure out why medaka was not completing sometimes
+            # Turns out it's because BCFtools sometimes does not install properly with conda
+            # with open(medaka_stdout, 'w') as f:
+            #     subprocess.run(cmd_medaka, stdout=f, stderr=subprocess.STDOUT)
+            subprocess.run(cmd_medaka, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
             # Rename medaka output assembly
             if os.path.exists(default_medaka_output):
@@ -405,11 +408,14 @@ class NanoporeMethods(object):
                 os.rename(polished_assembly + '.tmp', polished_assembly)
 
             # Cleanup
-            ext = ['.gfa', '.log', '_medaka.fasta', '.bed', '.hdf']
-            for i in ext:
-                for j in glob(sample_subfolder + '/*' + i):
-                    if os.path.exists(j):
-                        os.remove(j)
+            shutil.rmtree(sample_subfolder)
+            # ext = ['.gfa', '.log', '_medaka.fasta', '.bed', '.hdf', '.bam', '.bai']
+            # for i in ext:
+            #     for j in glob(sample_subfolder + '/*' + i):
+            #         if os.path.exists(j):
+            #             os.remove(j)
+            os.remove(input_assembly + '.map-ont.mmi')
+            os.remove(input_assembly + '.fai')
 
         return sample, polished_assembly
 

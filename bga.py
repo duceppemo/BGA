@@ -18,7 +18,7 @@ __version__ = '0.1'
 mamba create -n BGA -c conda-forge -c bioconda -c plotly -y python=3.10.11 nextpolish=1.4.1 bwa=0.7.17 samtools=1.17 \
     porechop=0.2.4 filtlong=0.2.1 minimap2=2.26 flye=2.9.2 shasta=0.11.1 qualimap=2.2.2d bbmap=39.01 bandage=0.8.1 \
     fastp=0.22.0 ntedit=1.3.5 polypolish=0.5.0 pandas=1.5.3 seqtk=1.4 quast=5.2.0 medaka=1.8.0 mummer4=4.0.0rc1 \
-    gnuplot=5.4.5 plotly=5.15.0
+    gnuplot=5.4.5 plotly=5.15.0 pigz=2.6
 
 plotly=5.14.1
 r-base=4.2.2 r-optparse=1.7.3 r-ggplot2=3.4.2 r-plotly=4.10.1
@@ -60,6 +60,9 @@ class BGA(object):
         # Data
         self.sample_dict = dict()
 
+        # Log
+        self.log_file = self.output_folder + '/log.txt'
+
         # Run
         self.run()
 
@@ -75,6 +78,7 @@ class BGA(object):
         if self.short_reads:
             Methods.check_input(self.short_reads)
 
+        Methods.check_dependencies(self.output_folder)
         print('\tAll good!')
 
         ############################################################
@@ -96,10 +100,13 @@ class BGA(object):
         illumina_trimmed_folder = self.output_folder + '/5a_trimmed_short/'
         illumina_trimmed_report_folder = self.output_folder + '/5b_trimmed_short_report/'
         polished_short_folder = self.output_folder + '/6_polished_short/'
-        qc_folder = self.output_folder + '/7_assembly_qc/'
-
-        # Create output folder
-        Methods.make_folder(self.output_folder)
+        assembly_qc_folder = self.output_folder + '/7_assembly_qc/'
+        quast_folder = assembly_qc_folder + 'quast/'
+        qualimap_long_folder = assembly_qc_folder + 'qualimap_long_reads/'
+        qualimap_short_folder = assembly_qc_folder + 'qualimap_short_reads/'
+        mummer_long_folder = assembly_qc_folder + '/mummer_long/'
+        mummer_short_folder = assembly_qc_folder + '/mummer_short/'
+        gfa_folder = assembly_qc_folder + 'assembly_graphs/'
 
         # Get input files and place info in dictionary
         if self.long_reads:
@@ -123,19 +130,19 @@ class BGA(object):
                                                       self.ref_size, self.parallel, done_filtering)
 
             # Assemble
-            # print('Assembling long reads with ', end="", flush=True)
             if self.assembler == 'flye':
                 print('Assembling long reads with Flye...')
-                NanoporeMethods.assemble_flye_parallel(self.sample_dict, assembled_folder, self.ref_size,
+                NanoporeMethods.assemble_flye_parallel(self.sample_dict, assembled_folder, gfa_folder, self.ref_size,
                                                        self.min_size, self.cpu, self.parallel, done_assembling)
                 NanoporeMethods.flye_assembly_stats(assembled_folder, self.output_folder)
             else:  # elif self.assembler == 'shasta':
                 print('Assembling long reads with Shasta...')
-                NanoporeMethods.assemble_shasta_parallel(self.sample_dict, assembled_folder,
+                NanoporeMethods.assemble_shasta_parallel(self.sample_dict, assembled_folder, gfa_folder,
                                                          self.ref_size, self.cpu, self.parallel, done_assembling)
+                NanoporeMethods.shasta_assembly_stats(assembled_folder, self.output_folder)
 
             # Long read polishing
-            print('Polishing assemblies with long reads using Medaka...')
+            print('Long read polishing with Medaka...')
             NanoporeMethods.polish_medaka_parallel(self.sample_dict, polished_long_folder, self.model,
                                                    self.cpu, self.parallel, done_polishing_long)
 
@@ -161,7 +168,7 @@ class BGA(object):
 
                 # Polish
                 if self.polish:
-                    print('Polishing long read assembly with short reads using NextPolish, ntEdit and Polypolish...')
+                    print('Short read polishing with NextPolish, ntEdit and Polypolish...')
                     IlluminaMethods.polish_parallel(self.sample_dict, polished_short_folder,
                                                     self.cpu, self.parallel, done_polishing_short)
             else:
@@ -169,27 +176,41 @@ class BGA(object):
 
         # QC
         print('Performing assembly QC...')
-        # Quast
 
-
-        # Qualimap long reads
-
-
-        # Qualimap short reads
-
-
-        # Pre- / post- long read polishing comparison
+        # Pre- / post-long read polishing comparison
         # sample_dict, ref_folder, query_folder, output_folder, cpu, parallel
         print('\tComparing assemblies before and after polishing with medaka.')
         # AssemblyQcMethods.run_last_parallel(self.sample_dict, assembled_folder, polished_long_folder,
-        #                                     qc_folder, self.cpu, self.parallel)
-        AssemblyQcMethods.run_nucmer_medaka_parallel(self.sample_dict, qc_folder, self.cpu, self.parallel)
+        #                                     assembly_qc_folder, self.cpu, self.parallel)
+        AssemblyQcMethods.run_nucmer_medaka_parallel(self.sample_dict, mummer_long_folder, self.cpu, self.parallel)
+
+        # Qualimap long reads
+        print('\tMapping trimmed reads to assemblies with minimap2')
+        AssemblyQcMethods.map_minimap2_parallel(self.sample_dict, qualimap_long_folder, 'nanopore',
+                                                self.cpu, self.parallel)
+
+        print('\tRunning Qualimap (long reads)')
+        AssemblyQcMethods.run_qualimap_parallel(self.sample_dict, qualimap_long_folder,
+                                                self.cpu, self.mem, self.parallel)
+
+        # QUAST
+        print('\tRunning QUAST...')
+        AssemblyQcMethods.run_quast(self.sample_dict, quast_folder, self.cpu)
 
         if self.polish:
             print('\tComparing assemblies before and after polishing with short reads.')
             # AssemblyQcMethods.run_last_parallel(self.sample_dict, assembled_folder, polished_long_folder,
-            #                                     qc_folder, self.cpu, self.parallel)
-            AssemblyQcMethods.run_nucmer_polypolish_parallel(self.sample_dict, qc_folder, self.cpu, self.parallel)
+            #                                     assembly_qc_folder, self.cpu, self.parallel)
+            AssemblyQcMethods.run_nucmer_polypolish_parallel(self.sample_dict, mummer_short_folder,
+                                                             self.cpu, self.parallel)
+
+            # Qualimap short reads
+            print('\tMapping trimmed reads to assemblies with minimap2')
+            AssemblyQcMethods.map_minimap2_parallel(self.sample_dict, qualimap_long_folder, 'illumina',
+                                                    self.cpu, self.parallel)
+            print('\tRunning Qualimap (short reads)')
+            AssemblyQcMethods.run_qualimap_parallel(self.sample_dict, qualimap_short_folder, self.cpu, self.mem,
+                                                    self.parallel)
 
         print('Done!')
 
