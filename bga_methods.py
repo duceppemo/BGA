@@ -272,7 +272,8 @@ class Methods(object):
                     # Add path to object
                     sample_dict[sample] = sample_obj
                     sample_dict[sample].nanopore.raw = file_path
-                    sample_dict[sample].illumina.raw = ''
+                    sample_dict[sample].illumina.raw = list()
+                    sample_dict[sample].illumina.trimmed = list()
                     sample_dict[sample].assembly.raw = ''
                     sample_dict[sample].bam.raw = ''
 
@@ -297,8 +298,6 @@ class Methods(object):
                     sample_obj = Sample()
                     sample_obj.illumina = Illumina()
 
-                    if not sample_dict[sample].illumina.raw:
-                        sample_dict[sample].illumina.raw = list()
                     if '_R1' in filename:
                         sample_dict[sample].illumina.raw.insert(0, file_path)
                     elif '_R2' in filename:

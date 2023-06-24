@@ -11,8 +11,8 @@ class IlluminaMethods(object):
     @staticmethod
     def trim_illumina_fastp_paired(sample, info_obj, illumina_trimmed_folder, report_folder, cpu, flag):
         # I/O
-        in_r1 = info_obj.illumina.raw.r1
-        in_r2 = info_obj.illumina.raw.r2
+        in_r1 = info_obj.illumina.raw[0]
+        in_r2 = info_obj.illumina.raw[1]
 
         out_r1 = illumina_trimmed_folder + sample + '_R1.fastq.gz'
         out_r2 = illumina_trimmed_folder + sample + '_R2.fastq.gz'
@@ -43,23 +43,24 @@ class IlluminaMethods(object):
             args = ((sample, sample_obj, output_folder, report_folder,
                      int(cpu / parallel), flag) for sample, sample_obj in sample_dict.items())
             for results in executor.map(lambda x: IlluminaMethods.trim_illumina_fastp_paired(*x), args):
-                sample_dict[results[0]].illumina.trimmed.r1 = results[1]
-                sample_dict[results[0]].illumina.trimmed.r2 = results[2]
+                sample_dict[results[0]].illumina.trimmed.insert(0, results[1])
+                sample_dict[results[0]].illumina.trimmed.insert(0, results[2])
 
         if os.path.exists(flag):  # Already performed
             print('\tSkipping trimming short reads. Already done.')
         else:  # Create the done flag
             Methods.flag_done(flag)
+            os.remove('fastp.json')
 
     @staticmethod
     def map_bwa_paired(genome, r1, r2, output_folder, cpu, sample):
         # I/O
-        # if info_obj.illumina.trimmed.r1:
-        #     r1 = info_obj.illumina.trimmed.r1
-        #     r2 = info_obj.illumina.trimmed.r2
-        # else:
-        #     r1 = info_obj.illumina.raw.r1
-        #     r2 = info_obj.illumina.raw.r2
+        # try:
+        #     r1 = info_obj.illumina.trimmed[0]
+        #     r2 = info_obj.illumina.trimmed[1]
+        # except AttributeError:
+        #     r1 = info_obj.illumina.raw[0]
+        #     r2 = info_obj.illumina.raw[1]
 
         out_bam = output_folder + sample + '.bam'
 
@@ -87,46 +88,7 @@ class IlluminaMethods(object):
 
         # Index bam file
         cmd = ['samtools', 'index', '-@', str(cpu), out_bam]
-        subprocess.run(cmd)
-
-    @staticmethod
-    def map_minimap2_short_paired(genome, r1, r2, output_folder, cpu, sample):
-        # I/O
-        output_bam = output_folder + sample + '.bam'
-
-        # cmd_bwa_mem = ['bwa', 'mem', '-t', str(cpu), genome, r1, r2]
-        minimap2_cmd = ['minimap2', '-a', '-x', 'sr', '-t', str(cpu), genome, r1]
-        if os.path.exists(r2):
-            minimap2_cmd += [r2]
-        samtools_view_cmd = ['samtools', 'view', '-@', str(cpu), '-F', '4', '-h', '-']
-        samtools_fixmate_cmd = ['samtools', 'fixmate', '-@', str(cpu), '-m', '-', '-']
-        samtools_sort_cmd = ['samtools', 'sort', '-@', str(cpu), '-']
-        samtools_markdup_cmd = ['samtools', 'markdup', '-r', '-@', str(cpu), '-', output_bam]
-        samtools_index_cmd = ['samtools', 'index', output_bam]
-
-        p1 = subprocess.Popen(minimap2_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        p2 = subprocess.Popen(samtools_view_cmd, stdin=p1.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        p1.stdout.close()
-        if os.path.exists(r2):
-            p3 = subprocess.Popen(samtools_fixmate_cmd, stdin=p2.stdout, stdout=subprocess.PIPE,
-                                  stderr=subprocess.DEVNULL)
-            p2.stdout.close()
-            p4 = subprocess.Popen(samtools_sort_cmd, stdin=p3.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-            p3.stdout.close()
-            p5 = subprocess.Popen(samtools_markdup_cmd, stdin=p4.stdout, stdout=subprocess.PIPE,
-                                  stderr=subprocess.DEVNULL)
-            p4.stdout.close()
-            p5.communicate()
-        else:
-            p3 = subprocess.Popen(samtools_sort_cmd, stdin=p2.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-            p2.stdout.close()
-            p4 = subprocess.Popen(samtools_markdup_cmd, stdin=p3.stdout, stdout=subprocess.PIPE,
-                                  stderr=subprocess.DEVNULL)
-            p3.stdout.close()
-            p4.communicate()
-
-        # Index bam file
-        subprocess.run(samtools_index_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
     @staticmethod
     def fix_fasta(input_fasta, output_fasta):
@@ -279,39 +241,41 @@ class IlluminaMethods(object):
     @staticmethod
     def polish(sample, info_obj, output_folder, cpu, flag):
         # I/O
-        r1 = info_obj.illumina.trimmed.r1
-        r2 = info_obj.illumina.trimmed.r2
-
         try:
-            t = os.path.exists(r1)
-        except TypeError:
-            delattr(info_obj.illumina, 'trimmed')
-            r1 = info_obj.illumina.raw.r1
-            r2 = info_obj.illumina.raw.r2
+            r1 = info_obj.illumina.trimmed[0]
+            r2 = info_obj.illumina.trimmed[1]
+        except IndexError:
+            r1 = info_obj.illumina.raw[0]
+            r2 = info_obj.illumina.raw[1]
+
+        genome = info_obj.assembly.medaka
 
         polished_assembly = output_folder + sample + '.fasta'
 
-        # Check if there is an assembly available for that sample
-        if not info_obj.assembly:
-            print('No assembly found for {}. Skipping polishing.'.format(sample))
-            return
+        if not os.path.exists(polished_assembly):  # TODO use flag file instead
+            # Check if there is an assembly available for that sample
+            if genome:
+                print('\t{}'.format(sample))
+                # Create polish folder
+                Methods.make_folder(output_folder)
 
+                # NextPolish
+                genome = IlluminaMethods.run_nextpolish(genome, r1, r2, output_folder, cpu, sample)
+                genome = IlluminaMethods.run_nextpolish(genome, r1, r2, output_folder, cpu, sample)
+
+                # ntEdit
+                genome = IlluminaMethods.run_ntedit(genome, r1, r2, output_folder, cpu, sample)
+
+                # Polypolish
+                for i in range(3):
+                    genome = IlluminaMethods.run_polypolish(genome, r1, r2, output_folder, sample)
+            else:
+                print('No assembly for {}'.format(sample))
+                polished_assembly = ''
+
+        # Need this in case a file is missing and the pipeline is skipping already completed steps
         if not os.path.exists(polished_assembly):
-            print('\t{}'.format(sample))
-            # Create polish folder
-            Methods.make_folder(output_folder)
-
-            # NextPolish
-            genome = info_obj.assembly.medaka
-            genome = IlluminaMethods.run_nextpolish(genome, r1, r2, output_folder, cpu, sample)
-            genome = IlluminaMethods.run_nextpolish(genome, r1, r2, output_folder, cpu, sample)
-
-            # ntEdit
-            genome = IlluminaMethods.run_ntedit(genome, r1, r2, output_folder, cpu, sample)
-
-            # Polypolish
-            for i in range(3):
-                genome = IlluminaMethods.run_polypolish(genome, r1, r2, output_folder, sample)
+            polished_assembly = ''
 
         return sample, polished_assembly
 

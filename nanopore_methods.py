@@ -1,20 +1,12 @@
 import os
 import gzip
 import shutil
-import warnings
 import subprocess
 import pandas as pd
 from glob import glob
 from shutil import move
 from concurrent import futures
 from bga_methods import Methods, Sample, Assembly
-
-
-# class Sample(object):
-#     # Enable creation of multiple "dots" in a single time for an object attribute
-#     def __getattr__(self, name):
-#         self.__dict__[name] = Sample()
-#         return self.__dict__[name]
 
 
 class NanoporeMethods(object):
@@ -55,11 +47,9 @@ class NanoporeMethods(object):
     @staticmethod
     def run_filtlong(sample, info_obj, filtered_folder, genome_size, flag):
         # I/O
-        input_fastq = info_obj.nanopore.trimmed
         try:
-            t = os.path.exists(input_fastq)
-        except TypeError:
-            delattr(info_obj.nanopore, 'trimmed')
+            input_fastq = info_obj.nanopore.trimmed
+        except AttributeError:
             input_fastq = info_obj.nanopore.raw
 
         filtered_fastq = filtered_folder + sample + '.fastq.gz'
@@ -77,6 +67,10 @@ class NanoporeMethods(object):
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
             with gzip.open(filtered_fastq, 'wb') as f:
                 f.write(p.communicate()[0])
+
+        # Need this in case a file is missing and the pipeline is skipping already completed steps
+        if not os.path.exists(filtered_fastq):
+            filtered_fastq = ''
 
         return sample, filtered_fastq
 
@@ -140,6 +134,10 @@ class NanoporeMethods(object):
                 subprocess.run(cmd_bandage, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
             else:  # No assembly output
                 output_assembly = ''
+
+        # Need this in case a file is missing and the pipeline is skipping already completed steps
+        if not os.path.exists(output_assembly):
+            output_assembly = ''
 
         return sample, output_assembly
 
@@ -233,7 +231,7 @@ class NanoporeMethods(object):
         if not os.path.exists(flag):
             cmd_ungzip = ['pigz', '-dkc', input_fastq]  # To stdout
             cmd_shasta = ['shasta',
-                          '--config', 'Nanopore-Oct2021',
+                          '--config', 'Nanopore-May2022',
                           '--input', unzipped_fastq,
                           '--assemblyDirectory', output_subfolder,
                           '--command', 'assemble',
@@ -277,6 +275,10 @@ class NanoporeMethods(object):
                 subprocess.run(cmd_bandage, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
             else:
                 output_assembly = ''
+
+        # Need this in case a file is missing and the pipeline is skipping already completed steps
+        if not os.path.exists(output_assembly):
+            output_assembly = ''
 
         return sample, output_assembly
 
@@ -361,17 +363,7 @@ class NanoporeMethods(object):
             except AttributeError:
                 input_fastq = info_obj.nanopore.raw
 
-        if info_obj.assembly.raw:
-            input_assembly = info_obj.assembly.raw
-        else:
-            print('\tNo assembly available for sample {}'.format(sample))
-            return sample, ''
-
-        # try:
-        #     input_assembly = info_obj.assembly.raw
-        # except AttributeError:
-        #     print('No assembly available for sample {}'.format(sample))
-        #     return sample, ''
+        input_assembly = info_obj.assembly.raw
 
         sample_subfolder = output_folder + sample + '/'
         default_medaka_output = sample_subfolder + 'consensus.fasta'
@@ -386,36 +378,44 @@ class NanoporeMethods(object):
                       '-m', model]
 
         if not os.path.exists(flag):
-            # Create output folders
-            Methods.make_folder(output_folder)
-            Methods.make_folder(sample_subfolder)
+            if input_assembly:
+                # Create output folders
+                Methods.make_folder(output_folder)
+                Methods.make_folder(sample_subfolder)
 
-            print('\t{}'.format(sample))
+                print('\t{}'.format(sample))
 
-            # Run medaka and save STDOUT to file
-            # Had to do this to figure out why medaka was not completing sometimes
-            # Turns out it's because BCFtools sometimes does not install properly with conda
-            # with open(medaka_stdout, 'w') as f:
-            #     subprocess.run(cmd_medaka, stdout=f, stderr=subprocess.STDOUT)
-            subprocess.run(cmd_medaka, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+                # Run medaka and save STDOUT to file
+                # Had to do this to figure out why medaka was not completing sometimes
+                # Turns out it's because BCFtools sometimes does not install properly with conda
+                # with open(medaka_stdout, 'w') as f:
+                #     subprocess.run(cmd_medaka, stdout=f, stderr=subprocess.STDOUT)
+                subprocess.run(cmd_medaka, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
-            # Rename medaka output assembly
-            if os.path.exists(default_medaka_output):
-                os.rename(default_medaka_output, polished_assembly)
+                # Rename medaka output assembly
+                if os.path.exists(default_medaka_output):
+                    os.rename(default_medaka_output, polished_assembly)
 
-                # Reformat fasta to have 80 characters per line
-                Methods.format_fasta(polished_assembly, polished_assembly + '.tmp')
-                os.rename(polished_assembly + '.tmp', polished_assembly)
+                    # Reformat fasta to have 80 characters per line
+                    Methods.format_fasta(polished_assembly, polished_assembly + '.tmp')
+                    os.rename(polished_assembly + '.tmp', polished_assembly)
 
-            # Cleanup
-            shutil.rmtree(sample_subfolder)
-            # ext = ['.gfa', '.log', '_medaka.fasta', '.bed', '.hdf', '.bam', '.bai']
-            # for i in ext:
-            #     for j in glob(sample_subfolder + '/*' + i):
-            #         if os.path.exists(j):
-            #             os.remove(j)
-            os.remove(input_assembly + '.map-ont.mmi')
-            os.remove(input_assembly + '.fai')
+                # Cleanup
+                shutil.rmtree(sample_subfolder)
+                # ext = ['.gfa', '.log', '_medaka.fasta', '.bed', '.hdf', '.bam', '.bai']
+                # for i in ext:
+                #     for j in glob(sample_subfolder + '/*' + i):
+                #         if os.path.exists(j):
+                #             os.remove(j)
+                os.remove(input_assembly + '.map-ont.mmi')
+                os.remove(input_assembly + '.fai')
+            else:
+                print('\tNo assembly for {}'.format(sample))
+                polished_assembly = ''
+
+        # Need this in case a file is missing and the pipeline is skipping already completed steps
+        if not os.path.exists(polished_assembly):
+            polished_assembly = ''
 
         return sample, polished_assembly
 

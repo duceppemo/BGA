@@ -124,15 +124,7 @@ class AssemblyQcMethods(object):
 
         # I/O
         ref = info_obj.assembly.raw
-        if not os.path.exists(ref):  # No assembly
-            delattr(info_obj.assembly, 'raw')
-            return
-
         query = info_obj.assembly.medaka
-        if not os.path.exists(query): # No polished assembly
-            delattr(info_obj.assembly, 'query')
-            return
-
         ouput_name = output_folder + sample + '_medaka'
 
         # To plot with GNUplot
@@ -142,8 +134,6 @@ class AssemblyQcMethods(object):
                       '--mincluster={}'.format(100),
                       ref, query]
 
-        subprocess.run(cmd_nucmer)
-
         cmd_plot = ['mummerplot',
                     '-x', '[0,{}]'.format(AssemblyQcMethods.fasta_length(ref)),
                     '-y', '[0,{}]'.format(AssemblyQcMethods.fasta_length(query)),
@@ -152,18 +142,17 @@ class AssemblyQcMethods(object):
                     ouput_name + '.delta']  # nucmer output
                     # mummer_out]  # mummer output
 
-        # GNUplot path is not defined in mummerplot when installed via conda
-        Methods.fix_mummerplot()
+        if ref and query:
+            subprocess.run(cmd_nucmer, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)  # Find differences
+            Methods.fix_mummerplot()  # GNUplot path is not defined in mummerplot when installed via conda
+            subprocess.run(cmd_plot, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)  # Make plot
 
-        # Make plot
-        subprocess.run(cmd_plot, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-
-        # Cleanup files
-        ext = ['.delta', '.fplot', '.gp', '.rplot']
-        for i in ext:
-            for j in glob.glob(output_folder + '/*' + i):
-                if os.path.exists(j):
-                    os.remove(j)
+            # Cleanup files
+            ext = ['.delta', '.fplot', '.gp', '.rplot']
+            for i in ext:
+                for j in glob.glob(output_folder + '/*' + i):
+                    if os.path.exists(j):
+                        os.remove(j)
 
     @staticmethod
     def run_nucmer_medaka_parallel(sample_dict, output_folder, cpu, parallel):
@@ -190,7 +179,6 @@ class AssemblyQcMethods(object):
                       '-p', ouput_name,  # Will append '.delta'
                       '--mincluster={}'.format(100),
                       ref, query]
-        subprocess.run(cmd_nucmer)
 
         cmd_plot = ['mummerplot',
                     '-x', '[0,{}]'.format(AssemblyQcMethods.fasta_length(ref)),
@@ -199,18 +187,20 @@ class AssemblyQcMethods(object):
                     '-p', ouput_name,
                     ouput_name + '.delta']  # nucmer output
 
-        # GNUplot path is not defined in mummerplot when installed via conda
-        Methods.fix_mummerplot()
+        if ref and query:
+            subprocess.run(cmd_nucmer, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
-        # Make plot
-        subprocess.run(cmd_plot, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+            # Make plot
+            # GNUplot path is not defined in mummerplot when installed via conda
+            Methods.fix_mummerplot()
+            subprocess.run(cmd_plot, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
-        # Cleanup files
-        ext = ['.delta', '.fplot', '.gp', '.rplot']
-        for i in ext:
-            for j in glob.glob(output_folder + '/*' + i):
-                if os.path.exists(j):
-                    os.remove(j)
+            # Cleanup files
+            ext = ['.delta', '.fplot', '.gp', '.rplot']
+            for i in ext:
+                for j in glob.glob(output_folder + '/*' + i):
+                    if os.path.exists(j):
+                        os.remove(j)
 
     @staticmethod
     def run_nucmer_polypolish_parallel(sample_dict, output_folder, cpu, parallel):
@@ -278,15 +268,15 @@ class AssemblyQcMethods(object):
                 r1 = info_obj.nanopore.trimmed
             except AttributeError:
                 r1 = info_obj.nanopore.raw
-        else:  # elin read_type = 'illumina'
-            try:
+        else:  # elif read_type = 'illumina'
+            if len(info_obj.illumina.trimmed) == 2:
                 input_fastq = info_obj.illumina.trimmed
-            except AttributeError:
+            elif len(info_obj.illumina.raw) == 2:
                 input_fastq = info_obj.illumina.raw
+            else:
+                raise Exception('Please provide paired-end short read data.')
             r1 = input_fastq[0]
-            r2 = ''
-            if len(input_fastq):
-                r2 = input_fastq[1]
+            r2 = input_fastq[1]
 
         # Assembly
         try:

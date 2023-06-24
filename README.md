@@ -84,5 +84,5 @@ python bga.py \
 ```
 ## TODO
 * Maybe add support for single-end Illumina data?
-* Process multiple sample in parallel for the polishing step.
 * Maybe add more options to control the long and short read pre-processing steps.
+* Add IonTorrent support for short read polishing?

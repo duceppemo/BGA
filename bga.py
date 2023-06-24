@@ -64,6 +64,7 @@ class BGA(object):
         self.log_file = self.output_folder + '/log.txt'
 
         # Run
+        os.chdir(self.output_folder)
         self.run()
 
     def run(self):
@@ -156,7 +157,7 @@ class BGA(object):
 
                 # Check that we have paired-end reads
                 for sample, info_obj in self.sample_dict.items():
-                    if not info_obj.illumina.raw.r1 and info_obj.illumina.raw.r1:
+                    if len(info_obj.illumina.raw) != 2:
                         raise Exception('Short read data must be paired-end (R1 and R2 files required).')
 
                 # Trim
@@ -167,10 +168,9 @@ class BGA(object):
                                                                         self.cpu, self.parallel, done_trimming_short)
 
                 # Polish
-                if self.polish:
-                    print('Short read polishing with NextPolish, ntEdit and Polypolish...')
-                    IlluminaMethods.polish_parallel(self.sample_dict, polished_short_folder,
-                                                    self.cpu, self.parallel, done_polishing_short)
+                print('Short read polishing with NextPolish, ntEdit and Polypolish...')
+                IlluminaMethods.polish_parallel(self.sample_dict, polished_short_folder,
+                                                self.cpu, self.parallel, done_polishing_short)
             else:
                 raise Exception('You must provide paired-end short read data in order to perform short read polishing.')
 
@@ -179,7 +179,7 @@ class BGA(object):
 
         # Pre- / post-long read polishing comparison
         # sample_dict, ref_folder, query_folder, output_folder, cpu, parallel
-        print('\tComparing assemblies before and after polishing with medaka.')
+        print('\tRunning Nucmer - raw vS long read polished')
         # AssemblyQcMethods.run_last_parallel(self.sample_dict, assembled_folder, polished_long_folder,
         #                                     assembly_qc_folder, self.cpu, self.parallel)
         AssemblyQcMethods.run_nucmer_medaka_parallel(self.sample_dict, mummer_long_folder, self.cpu, self.parallel)
@@ -194,11 +194,11 @@ class BGA(object):
                                                 self.cpu, self.mem, self.parallel)
 
         # QUAST
-        print('\tRunning QUAST...')
+        print('\tRunning QUAST')
         AssemblyQcMethods.run_quast(self.sample_dict, quast_folder, self.cpu)
 
         if self.polish:
-            print('\tComparing assemblies before and after polishing with short reads.')
+            print('\tRunning Nucmer - long read polished VS short read polished')
             # AssemblyQcMethods.run_last_parallel(self.sample_dict, assembled_folder, polished_long_folder,
             #                                     assembly_qc_folder, self.cpu, self.parallel)
             AssemblyQcMethods.run_nucmer_polypolish_parallel(self.sample_dict, mummer_short_folder,
