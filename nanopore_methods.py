@@ -211,7 +211,6 @@ class NanoporeMethods(object):
 
     @staticmethod
     def assemble_shasta(sample, info_obj, output_folder, gfa_folder, min_size, cpu, flag):
-
         # I/O
         # Figure out which reads we need to use
         try:
@@ -224,29 +223,40 @@ class NanoporeMethods(object):
 
         # Unzipped fastq file (needed for shasta)
         unzipped_fastq = output_folder + sample + '.fastq'
+        fasta = output_folder + sample + '.fasta'
 
         output_assembly = output_folder + sample + '.fasta'
         output_subfolder = output_folder + sample + '/'  # Create a subfolder for each sample
 
         if not os.path.exists(flag):
             cmd_ungzip = ['pigz', '-dkc', input_fastq]  # To stdout
+
+            cmd_fastq_to_fasta = ['seqtk', 'seq',
+                                  '-a', input_fastq]
+
             cmd_shasta = ['shasta',
                           '--config', 'Nanopore-May2022',
-                          '--input', unzipped_fastq,
+                          # '--input', unzipped_fastq,
+                          '--input', fasta,
                           '--assemblyDirectory', output_subfolder,
-                          '--command', 'assemble',
                           '--threads', str(cpu)]
             if min_size:
                 cmd_shasta += ['--Reads.minReadLength', str(min_size)]
+            else:
+                cmd_shasta += ['--Reads.minReadLength', str(3000)]
 
             cmd_shasta_clean = ['shasta',
                                 '--assemblyDirectory', output_subfolder,
                                 '--command', 'cleanupBinaryData']
 
             # Decompress fastq for shasta
-            print('\t{}'.format(sample))
-            with open(unzipped_fastq, 'w') as f:
-                subprocess.run(cmd_ungzip, stdout=f)
+            # print('\t{}'.format(sample))
+            # with open(unzipped_fastq, 'w') as f:
+            #     subprocess.run(cmd_ungzip, stdout=f)
+
+            # Convert fastq to fasta
+            with open(fasta, 'w') as f:
+                subprocess.run(cmd_fastq_to_fasta, stdout=f)
 
             # Run shasta assembler
             # Need this file to get the assembly stats
@@ -257,7 +267,8 @@ class NanoporeMethods(object):
 
             # Cleanup temporary files
             subprocess.run(cmd_shasta_clean, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-            os.remove(unzipped_fastq)
+            # os.remove(unzipped_fastq)
+            os.remove(fasta)
 
             # Rename and move assembly file
             # Assembly and gfa files are always created, but empty if no assemblies
@@ -287,6 +298,7 @@ class NanoporeMethods(object):
         Methods.make_folder(output_folder)
 
         with futures.ThreadPoolExecutor(max_workers=int(parallel)) as executor:
+            # sample, info_obj, output_folder, gfa_folder, min_size, cpu, flag
             args = ((sample, info_obj, output_folder, gfa_folder, min_size, int(cpu / parallel), flag)
                     for sample, info_obj in sample_dict.items())
             for results in executor.map(lambda x: NanoporeMethods.assemble_shasta(*x), args):

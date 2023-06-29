@@ -138,8 +138,9 @@ class BGA(object):
                 NanoporeMethods.flye_assembly_stats(assembled_folder, self.output_folder)
             else:  # elif self.assembler == 'shasta':
                 print('Assembling long reads with Shasta...')
+                # sample_dict, output_folder, gfa_folder, min_size, cpu, parallel, flag
                 NanoporeMethods.assemble_shasta_parallel(self.sample_dict, assembled_folder, gfa_folder,
-                                                         self.ref_size, self.cpu, self.parallel, done_assembling)
+                                                         self.min_size, self.cpu, self.parallel, done_assembling)
                 NanoporeMethods.shasta_assembly_stats(assembled_folder, self.output_folder)
 
             # Long read polishing
@@ -239,10 +240,7 @@ if __name__ == "__main__":
                         required=False,
                         type=int,
                         help='Minimum read size for Shasta assembler or minimum read overlap for Flye. '
-                             'Note that Shasta uses a min read size of 10,000bp by default and Flye automatically '
-                             'sets this values based on read length distribution. It is recommended, to set this value '
-                             'to something that reflects your read size distribution if using Shasta, say 3,000. '
-                             'Optional.')
+                             'Shasta default is 3,000. Flye default is "auto". Optional.')
     parser.add_argument('--size', metavar='5000000',
                         required=False,
                         type=int,
