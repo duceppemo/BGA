@@ -23,7 +23,7 @@ If you need to perform basecalling to produce fastq files from Nanopore fast5 fi
 mamba create -n BGA -c conda-forge -c bioconda -c plotly -y python=3.10.11 nextpolish=1.4.1 bwa=0.7.17 samtools=1.17 \
     porechop=0.2.4 filtlong=0.2.1 minimap2=2.26 flye=2.9.2 shasta=0.11.1 qualimap=2.2.2d bbmap=39.01 bandage=0.8.1 \
     fastp=0.22.0 ntedit=1.3.5 polypolish=0.5.0 pandas=1.5.3 seqtk=1.4 quast=5.2.0 medaka=1.8.0 mummer4=4.0.0rc1 \
-    gnuplot=5.4.5 plotly=5.15.0
+    gnuplot=5.4.5 plotly=5.15.0 pigz=2.6
 
 # Activate virtual environment
 conda activate BGA
@@ -37,10 +37,9 @@ cd BGA
 python bga.py -h
 ```
 ## Usage
-```commandline
-usage: python bga.py [-h] -l /path/to/nanopore_folder [-s /path/to/illumina_folder] -o /path/to/output_folder/ [-a {flye,shasta}]
-                     [--min-size 3000] [--size 5000000] [--trim-long] [--filter-long] [--polish] [--trim-short] [-t 16] [-p 2]
-                     [-m 57] [-v]
+``` 
+usage: python bga.py [-h] -l /path/to/nanopore_folder [-s /path/to/illumina_folder] -o /path/to/output_folder/ [-a {flye,shasta}] [--min-size 3000] [--size 5000000] [--trim-long] [--filter-long]
+                     [--model {r941_min_sup_g507,r103_sup_g507}] [--polish] [--trim-short] [-t 16] [-p 2] [-m 57] [-v]
 
 Bacterial Genome assembly.
 
@@ -49,22 +48,22 @@ options:
   -l /path/to/nanopore_folder, --long-reads /path/to/nanopore_folder
                         Folder that contains the fastq files from Nanopore. Mandatory.
   -s /path/to/illumina_folder, --short-reads /path/to/illumina_folder
-                        Folder that contains the fastq files from Illumina. Illumina file names must match Nanopore files
-                        names (everything before the first underscore ("_"). Optional.
+                        Folder that contains the fastq files from Illumina. Illumina file names must match Nanopore files names (everything before the first underscore ("_"). Optional.
   -o /path/to/output_folder/, --output /path/to/output_folder/
                         Folder to hold the result files. Mandatory.
   -a {flye,shasta}, --assembler {flye,shasta}
                         Assembly method. Default "flye". Optional.
-  --min-size 3000       Minimum read size for Shasta assembler or minimum read overlap for Flye. Default 3000 for Shasta and
-                        auto for Flye. Optional.
-  --size 5000000        Override automatically detected reference size for Flye. If entered manually, it will also be used
-                        to during the long read filtering step (to retain the 100x to reads, if coverage allows. Optional.
+  --min-size 3000       Minimum read size for Shasta assembler or minimum read overlap for Flye. Shasta default is 3,000. Flye default is "auto". Optional.
+  --size 5000000        Override automatically detected reference size for Flye. If entered manually, it will also be used to during the long read filtering step (to retain the 100x to reads, if coverage allows.
+                        Optional.
   --trim-long           Trim long reads with Porechop prior assembly. Default is False.
   --filter-long         Filter long reads with Filtlong prior assembly. Drop bottom 5%. Default is False.
+  --model {r941_min_sup_g507,r103_sup_g507}
+                        Medaka model. Default is for R9.4.1 flowcell.
   --polish              Polish long read assembly with Illumina paired-end data. Default is False.
   --trim-short          Trim paired-end Illumina reads with FastP prior polishing. Default is False.
   -t 16, --threads 16   Number of threads. Default is maximum available(16). Optional.
-  -p 2, --parallel 2    Number of samples to process in parallel. Default is 2. Optional.
+  -p 2, --parallel 2    Number of samples to process in parallel. Keep low if your computer has low memory. Default is 2. Optional.
   -m 57, --memory 57    Memory in GB. Default is 85% of total memory (57)
   -v, --version         show program's version number and exit
 ```

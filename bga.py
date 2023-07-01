@@ -186,7 +186,7 @@ class BGA(object):
         AssemblyQcMethods.run_nucmer_medaka_parallel(self.sample_dict, mummer_long_folder, self.cpu, self.parallel)
 
         # Qualimap long reads
-        print('\tMapping trimmed reads to assemblies with minimap2')
+        print('\tMapping long reads to assemblies with minimap2')
         AssemblyQcMethods.map_minimap2_parallel(self.sample_dict, qualimap_long_folder, 'nanopore',
                                                 self.cpu, self.parallel)
 
@@ -206,7 +206,7 @@ class BGA(object):
                                                              self.cpu, self.parallel)
 
             # Qualimap short reads
-            print('\tMapping trimmed reads to assemblies with minimap2')
+            print('\tMapping short reads to assemblies with minimap2')
             AssemblyQcMethods.map_minimap2_parallel(self.sample_dict, qualimap_long_folder, 'illumina',
                                                     self.cpu, self.parallel)
             print('\tRunning Qualimap (short reads)')
