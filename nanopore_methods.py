@@ -390,7 +390,7 @@ class NanoporeMethods(object):
                       '-m', model]
 
         if not os.path.exists(flag):
-            if input_assembly:
+            if s.path.exists(input_assembly):
                 # Create output folders
                 Methods.make_folder(output_folder)
                 Methods.make_folder(sample_subfolder)
@@ -419,8 +419,11 @@ class NanoporeMethods(object):
                 #     for j in glob(sample_subfolder + '/*' + i):
                 #         if os.path.exists(j):
                 #             os.remove(j)
-                os.remove(input_assembly + '.map-ont.mmi')
-                os.remove(input_assembly + '.fai')
+                try:
+                    os.remove(input_assembly + '.map-ont.mmi')
+                    os.remove(input_assembly + '.fai')
+                except FileNotFoundError:
+                    pass
             else:
                 print('\tNo assembly for {}'.format(sample))
                 polished_assembly = ''
