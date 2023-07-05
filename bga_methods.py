@@ -89,10 +89,10 @@ class Methods(object):
     @staticmethod
     def check_dependencies(output_folder):
         """
-        python=3.10.11 nextpolish=1.4.1 bwa=0.7.17 samtools=1.17 \
+        python=3.10.8 nextpolish=1.4.1 bwa=0.7.17 samtools=1.17 \
         porechop=0.2.4 filtlong=0.2.1 minimap2=2.26 flye=2.9.2 shasta=0.11.1 qualimap=2.2.2d bbmap=39.01 bandage=0.8.1 \
         fastp=0.22.0 ntedit=1.3.5 polypolish=0.5.0 pandas=1.5.3 seqtk=1.4 quast=5.2.0 medaka=1.8.0 mummer4=4.0.0rc1 \
-        gnuplot=5.4.5 plotly=5.15.0
+        gnuplot=5.4.5 plotly=5.15.0 pigz=2.6
         """
         Methods.make_folder(output_folder)
         log_file = output_folder + '/log.txt'
@@ -106,6 +106,7 @@ class Methods(object):
             f.write('Python v{}\n'.format(version))
 
             # Seqtk
+            # Version: 1.4-r122  # Got to fetch this line
             # Version: 1.4-r122  # Got to fetch this line
             try:
                 stdout = subprocess.check_output(['seqtk'], stderr=subprocess.STDOUT)
@@ -152,7 +153,7 @@ class Methods(object):
 
             # Qualimap
             # QualiMap v.2.2.2-dev  # Got to fetch this line
-            stdout = subprocess.check_output(['qualimap', '--version'], stderr=subprocess.STDOUT)
+            stdout = subprocess.check_output(['qualimap', '-h'], stderr=subprocess.STDOUT)
             for line in stdout.decode('utf-8').split('\n'):
                 if line.startswith('QualiMap v'):
                     version = line.split(' ')[1]
@@ -352,7 +353,6 @@ class Methods(object):
         with open(output_fasta, 'w') as out_handle:
             for title, seq in fasta_dict.items():
                 out_handle.write('{}\n{}\n'.format(title, '\n'.join(textwrap.wrap(seq, 80, break_long_words=True))))
-
 
     @staticmethod
     def fix_mummerplot():
