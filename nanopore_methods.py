@@ -390,7 +390,7 @@ class NanoporeMethods(object):
                       '-m', model]
 
         if not os.path.exists(flag):
-            if s.path.exists(input_assembly):
+            if os.path.exists(input_assembly):
                 # Create output folders
                 Methods.make_folder(output_folder)
                 Methods.make_folder(sample_subfolder)
