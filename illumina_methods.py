@@ -11,32 +11,36 @@ class IlluminaMethods(object):
     @staticmethod
     def trim_illumina_fastp_paired(sample, info_obj, illumina_trimmed_folder, report_folder, cpu, flag):
         # I/O
-        in_r1 = info_obj.illumina.raw[0]
-        in_r2 = info_obj.illumina.raw[1]
+        try:
+            in_r1 = info_obj.illumina.raw[0]
+            in_r2 = info_obj.illumina.raw[1]
 
-        out_r1 = illumina_trimmed_folder + sample + '_R1.fastq.gz'
-        out_r2 = illumina_trimmed_folder + sample + '_R2.fastq.gz'
+            out_r1 = illumina_trimmed_folder + sample + '_R1.fastq.gz'
+            out_r2 = illumina_trimmed_folder + sample + '_R2.fastq.gz'
 
-        if not os.path.exists(flag):
-            # Check that we have paired-end reads
-            if os.path.exists(in_r1) and os.path.exists(in_r2):
-                cmd = ['fastp',
-                       '--in1', in_r1,
-                       '--in2', in_r2,
-                       '--out1', out_r1,
-                       '--out2', out_r2,
-                       '--detect_adapter_for_pe',
-                       '--cut_right',
-                       '--cut_right_mean_quality', str(10),
-                       '--length_required', str(64),
-                       '--html', report_folder + sample + '.html',
-                       '--thread', str(cpu)]
+            if not os.path.exists(flag):
+                # Check that we have paired-end reads
+                if os.path.exists(in_r1) and os.path.exists(in_r2):
+                    cmd = ['fastp',
+                           '--in1', in_r1,
+                           '--in2', in_r2,
+                           '--out1', out_r1,
+                           '--out2', out_r2,
+                           '--detect_adapter_for_pe',
+                           '--cut_right',
+                           '--cut_right_mean_quality', str(10),
+                           '--length_required', str(64),
+                           '--html', report_folder + sample + '.html',
+                           '--thread', str(cpu)]
 
-                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+                    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
             else:
                 print('Paired-end data missing for {}. Skipping short read trimming.'.format(sample))
                 out_r1 = ''
                 out_r2 = ''
+        except IndexError:
+            out_r1 = ''
+            out_r2 = ''
 
         return sample, out_r1, out_r2
 
