@@ -33,6 +33,7 @@ class IlluminaMethods(object):
                            '--html', report_folder + sample + '.html',
                            '--thread', str(cpu)]
 
+                    print('\t{}'.format(sample))
                     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
             else:
                 print('Paired-end data missing for {}. Skipping short read trimming.'.format(sample))
