@@ -18,19 +18,25 @@ class IlluminaMethods(object):
         out_r2 = illumina_trimmed_folder + sample + '_R2.fastq.gz'
 
         if not os.path.exists(flag):
-            cmd = ['fastp',
-                   '--in1', in_r1,
-                   '--in2', in_r2,
-                   '--out1', out_r1,
-                   '--out2', out_r2,
-                   '--detect_adapter_for_pe',
-                   '--cut_right',
-                   '--cut_right_mean_quality', str(10),
-                   '--length_required', str(64),
-                   '--html', report_folder + sample + '.html',
-                   '--thread', str(cpu)]
+            # Check that we have paired-end reads
+            if os.path.exists(in_r1) and os.path.exists(in_r2):
+                cmd = ['fastp',
+                       '--in1', in_r1,
+                       '--in2', in_r2,
+                       '--out1', out_r1,
+                       '--out2', out_r2,
+                       '--detect_adapter_for_pe',
+                       '--cut_right',
+                       '--cut_right_mean_quality', str(10),
+                       '--length_required', str(64),
+                       '--html', report_folder + sample + '.html',
+                       '--thread', str(cpu)]
 
-            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+            else:
+                print('Paired-end data missing for {}. Skipping short read trimming.'.format(sample))
+                out_r1 = ''
+                out_r2 = ''
 
         return sample, out_r1, out_r2
 
@@ -278,38 +284,40 @@ class IlluminaMethods(object):
             r2 = info_obj.illumina.raw[1]
 
         genome = info_obj.assembly.medaka
-
         polished_assembly = output_folder + sample + '.fasta'
 
-        if not os.path.exists(polished_assembly):  # TODO use flag file instead
-            # Check if there is an assembly available for that sample
-            if genome:
-                print('\t{}'.format(sample))
-                # Create polish folder
-                Methods.make_folder(output_folder)
+        # TODO: add flag check
+        if not os.path.exists(flag):
+            if os.path.exists(genome):
+                if os.path.exists(r1) and os.path.exists(r2):
+                    # Check if there is an assembly available for that sample
+                    print('\t{}'.format(sample))
+                    # Create polish folder
+                    Methods.make_folder(output_folder)
 
-                # NextPolish
-                # print('\tNextPolish 1st round')  # Debug
-                genome = IlluminaMethods.run_nextpolish(genome, r1, r2, output_folder, cpu, sample)
-                # print('\tNextPolish 2nd round')  # Debug
-                genome = IlluminaMethods.run_nextpolish(genome, r1, r2, output_folder, cpu, sample)
+                    # NextPolish
+                    # print('\tNextPolish 1st round')  # Debug
+                    genome = IlluminaMethods.run_nextpolish(genome, r1, r2, output_folder, cpu, sample)
+                    # print('\tNextPolish 2nd round')  # Debug
+                    genome = IlluminaMethods.run_nextpolish(genome, r1, r2, output_folder, cpu, sample)
 
-                # ntEdit
-                # print('\tntEdit')  # Debug
-                genome = IlluminaMethods.run_ntedit(genome, r1, r2, output_folder, cpu, sample)
+                    # ntEdit
+                    # print('\tntEdit')  # Debug
+                    genome = IlluminaMethods.run_ntedit(genome, r1, r2, output_folder, cpu, sample)
 
-                # Polypolish
-                for i in range(3):
-                    # print('\tPolypolish round {}'.format(i))  # Debug
-                    genome = IlluminaMethods.run_polypolish(genome, r1, r2, output_folder, sample)
+                    # Polypolish
+                    for i in range(3):
+                        # print('\tPolypolish round {}'.format(i))  # Debug
+                        genome = IlluminaMethods.run_polypolish(genome, r1, r2, output_folder, sample)
+                else:
+                    print('Paired-end data missing for {}. Skipping short read polishing.'.format(sample))
+                    polished_assembly = ''
             else:
-                print('No assembly for {}'.format(sample))
+                print('No assembly for {}. Skipping short read polishing.'.format(sample))
                 polished_assembly = ''
 
         # Need this in case a file is missing and the pipeline is skipping already completed steps
-        if not os.path.exists(polished_assembly):
-            polished_assembly = ''
-        else:
+        if os.path.exists(polished_assembly):
             IlluminaMethods.fix_fasta_header(polished_assembly)
 
         return sample, polished_assembly

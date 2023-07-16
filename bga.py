@@ -18,7 +18,7 @@ __version__ = '0.1'
 mamba create -n BGA -c conda-forge -c bioconda -c plotly -y python=3.10.8 nextpolish=1.4.1 bwa=0.7.17 samtools=1.17 \
     porechop=0.2.4 filtlong=0.2.1 minimap2=2.26 flye=2.9.2 shasta=0.11.1 qualimap=2.2.2d bbmap=39.01 bandage=0.8.1 \
     fastp=0.22.0 ntedit=1.3.5 polypolish=0.5.0 pandas=1.5.3 seqtk=1.4 quast=5.2.0 medaka=1.8.0 mummer4=4.0.0rc1 \
-    gnuplot=5.4.5 plotly=5.15.0 pigz=2.6
+    gnuplot=5.4.5 plotly=5.15.0 pigz=2.6 falco=1.2.1
 
 plotly=5.14.1
 r-base=4.2.2 r-optparse=1.7.3 r-ggplot2=3.4.2 r-plotly=4.10.1
@@ -155,11 +155,6 @@ class BGA(object):
             if self.short_reads:
                 # Get fastq files
                 self.sample_dict = Methods.get_illumina_files(self.short_reads, self.sample_dict)
-
-                # Check that we have paired-end reads
-                for sample, info_obj in self.sample_dict.items():
-                    if len(info_obj.illumina.raw) != 2:
-                        raise Exception('Short read data must be paired-end (R1 and R2 files required).')
 
                 # Trim
                 if self.trim_short:
