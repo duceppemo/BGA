@@ -35,10 +35,10 @@ class IlluminaMethods(object):
 
                     print('\t{}'.format(sample))
                     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-            else:
-                print('Paired-end data missing for {}. Skipping short read trimming.'.format(sample))
-                out_r1 = ''
-                out_r2 = ''
+                else:
+                    print('Paired-end data missing for {}. Skipping short read trimming.'.format(sample))
+                    out_r1 = ''
+                    out_r2 = ''
         except IndexError:
             out_r1 = ''
             out_r2 = ''
@@ -78,14 +78,11 @@ class IlluminaMethods(object):
         p1 = subprocess.Popen(minimap2_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         p2 = subprocess.Popen(samtools_view_cmd, stdin=p1.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         p1.stdout.close()
-        p3 = subprocess.Popen(samtools_fixmate_cmd, stdin=p2.stdout, stdout=subprocess.PIPE,
-                              stderr=subprocess.DEVNULL)
+        p3 = subprocess.Popen(samtools_fixmate_cmd, stdin=p2.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         p2.stdout.close()
-        p4 = subprocess.Popen(samtools_sort_cmd, stdin=p3.stdout, stdout=subprocess.PIPE,
-                              stderr=subprocess.DEVNULL)
+        p4 = subprocess.Popen(samtools_sort_cmd, stdin=p3.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         p3.stdout.close()
-        p5 = subprocess.Popen(samtools_markdup_cmd, stdin=p4.stdout, stdout=subprocess.PIPE,
-                              stderr=subprocess.DEVNULL)
+        p5 = subprocess.Popen(samtools_markdup_cmd, stdin=p4.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         p4.stdout.close()
         p5.communicate()
 
@@ -140,7 +137,7 @@ class IlluminaMethods(object):
     @staticmethod
     def run_nextpolish(genome, r1, r2, polished_folder, cpu, sample):
         # Index genome
-        subprocess.run(['samtools', 'faidx', genome])
+        subprocess.run(['samtools', 'faidx', genome], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
         # Map paired-end reads to genome
         IlluminaMethods.map_bwa_paired(genome, r1, r2, polished_folder, cpu, sample)
@@ -239,7 +236,7 @@ class IlluminaMethods(object):
         with open(sam_r2, 'w') as f:
             f.write(p2.communicate()[0].decode('utf-8'))
 
-        cmd_pp = ['polypolish', genome, sam_r1, sam_r2]
+        cmd_pp = ['polypolish', 'polish', genome, sam_r1, sam_r2]
         fasta_pp = polished_folder + sample + '.polypolish.fasta'
         p3 = subprocess.Popen(cmd_pp, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         with open(fasta_pp, 'w') as f:

@@ -291,7 +291,7 @@ class AssemblyQcMethods(object):
 
         if read_type == 'nanopore':
             minimap2_cmd = ['minimap2', '-a', '-x', 'map-ont', '-t', str(cpu), ref, r1]
-        else:  # elsif read_type = 'illumina'
+        else:  # elsif read_type == 'illumina'
             minimap2_cmd = ['minimap2', '-a', '-x', 'sr', '-t', str(cpu), ref, r1]
             if r2:
                 minimap2_cmd += [r2]
@@ -318,8 +318,7 @@ class AssemblyQcMethods(object):
             else:
                 p3 = subprocess.Popen(samtools_sort_cmd, stdin=p2.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
                 p2.stdout.close()
-                p4 = subprocess.Popen(samtools_markdup_cmd, stdin=p3.stdout, stdout=subprocess.PIPE,
-                                      stderr=subprocess.DEVNULL)
+                p4 = subprocess.Popen(samtools_markdup_cmd, stdin=p3.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
                 p3.stdout.close()
                 p4.communicate()
 

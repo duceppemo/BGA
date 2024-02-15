@@ -175,7 +175,7 @@ class BGA(object):
 
         # Pre- / post-long read polishing comparison
         # sample_dict, ref_folder, query_folder, output_folder, cpu, parallel
-        print('\tRunning Nucmer - raw vS long read polished')
+        print('\tRunning Nucmer - raw VS long read polished')
         # AssemblyQcMethods.run_last_parallel(self.sample_dict, assembled_folder, polished_long_folder,
         #                                     assembly_qc_folder, self.cpu, self.parallel)
         AssemblyQcMethods.run_nucmer_medaka_parallel(self.sample_dict, mummer_long_folder, self.cpu, self.parallel)
@@ -250,7 +250,7 @@ if __name__ == "__main__":
                         help='Filter long reads with Filtlong prior assembly. Drop bottom 5%%. Default is False.')
     parser.add_argument('--model',
                         type=str, required=False, default='r941_min_sup_g507',
-                        choices=['r941_min_sup_g507', 'r103_sup_g507'],
+                        choices=['r941_min_sup_g507', 'r103_sup_g507', 'r104_e81_sup_g5015'],
                         help='Medaka model. Default is for R9.4.1 flowcell.')
     parser.add_argument('--polish',
                         required=False, action='store_true',

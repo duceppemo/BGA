@@ -438,8 +438,16 @@ class NanoporeMethods(object):
     def polish_medaka_parallel(sample_dict, output_folder, model, cpu, parallel, flag):
         Methods.make_folder(output_folder)
 
-        with futures.ThreadPoolExecutor(max_workers=int(parallel)) as executor:
-            args = ((sample, info_obj, output_folder, model, int(cpu / parallel), flag)
+        # Medaka crashes when multiple instances run in parallel
+        # with futures.ThreadPoolExecutor(max_workers=int(parallel)) as executor:
+        #     args = ((sample, info_obj, output_folder, model, int(cpu / parallel), flag)
+        #             for sample, info_obj in sample_dict.items())
+        #     for results in executor.map(lambda x: NanoporeMethods.polish_medaka(*x), args):
+        #         sample_dict[results[0]].assembly.medaka = results[1]
+
+        # Running one at the time.
+        with futures.ThreadPoolExecutor(max_workers=1) as executor:
+            args = ((sample, info_obj, output_folder, model, int(cpu), flag)
                     for sample, info_obj in sample_dict.items())
             for results in executor.map(lambda x: NanoporeMethods.polish_medaka(*x), args):
                 sample_dict[results[0]].assembly.medaka = results[1]
