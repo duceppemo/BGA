@@ -108,6 +108,8 @@ class BGA(object):
         mummer_long_folder = assembly_qc_folder + '/mummer_long/'
         mummer_short_folder = assembly_qc_folder + '/mummer_short/'
         gfa_folder = assembly_qc_folder + 'assembly_graphs/'
+        coverage_long_folder = assembly_qc_folder + '/coverage_long/'
+        coverage_short_folder = assembly_qc_folder + '/coverage_short/'
 
         # Get input files and place info in dictionary
         if self.long_reads:
@@ -134,17 +136,18 @@ class BGA(object):
             if self.assembler == 'flye':
                 print('Assembling long reads with Flye...')
                 NanoporeMethods.assemble_flye_parallel(self.sample_dict, assembled_folder, gfa_folder, self.ref_size,
-                                                       self.min_size, self.cpu, self.parallel, done_assembling)
-                NanoporeMethods.flye_assembly_stats(assembled_folder, self.output_folder)
+                                                       self.min_size, self.cpu, self.parallel, done_assembling,
+                                                       self.output_folder)
             else:  # elif self.assembler == 'shasta':
                 print('Assembling long reads with Shasta...')
                 # sample_dict, output_folder, gfa_folder, min_size, cpu, parallel, flag
                 NanoporeMethods.assemble_shasta_parallel(self.sample_dict, assembled_folder, gfa_folder,
-                                                         self.min_size, self.cpu, self.parallel, done_assembling)
-                NanoporeMethods.shasta_assembly_stats(assembled_folder, self.output_folder)
+                                                         self.min_size, self.cpu, self.parallel, done_assembling,
+                                                         self.output_folder)
 
             # Long read polishing
             print('Long read polishing with Medaka...')
+            # TODO: run in a loop instead of parallel
             NanoporeMethods.polish_medaka_parallel(self.sample_dict, polished_long_folder, self.model,
                                                    self.cpu, self.parallel, done_polishing_long)
 
@@ -164,7 +167,7 @@ class BGA(object):
                                                                         self.cpu, self.parallel, done_trimming_short)
 
                 # Polish
-                print('Short read polishing with NextPolish, ntEdit and Polypolish...')
+                print('Short read polishing with Polypolish and pyPOLCA...')
                 IlluminaMethods.polish_parallel(self.sample_dict, polished_short_folder,
                                                 self.cpu, self.parallel, done_polishing_short)
             else:
@@ -207,6 +210,14 @@ class BGA(object):
             print('\tRunning Qualimap (short reads)')
             AssemblyQcMethods.run_qualimap_parallel(self.sample_dict, qualimap_short_folder, self.cpu, self.mem,
                                                     self.parallel)
+
+            print('\tComputing short read coverage')
+            AssemblyQcMethods.short_read_coverage_parallel(self.sample_dict, coverage_short_folder, self.cpu,
+                                                           self.parallel)
+
+        print('\tComputing long read coverage')
+        AssemblyQcMethods.long_read_coverage_parallel(self.sample_dict, coverage_long_folder, self.cpu,
+                                                      self.parallel)
 
         print('Done!')
 

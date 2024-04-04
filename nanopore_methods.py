@@ -142,11 +142,12 @@ class NanoporeMethods(object):
         return sample, output_assembly
 
     @staticmethod
-    def assemble_flye_parallel(sample_dict, output_folder, gfa_folder, genome_size, min_size, cpu, parallel, flag):
-        Methods.make_folder(output_folder)
+    def assemble_flye_parallel(sample_dict, assembly_folder, gfa_folder, genome_size, min_size, cpu, parallel, flag,
+                               output_folder):
+        Methods.make_folder(assembly_folder)
 
         with futures.ThreadPoolExecutor(max_workers=int(parallel)) as executor:
-            args = ((sample, info_obj, output_folder, gfa_folder, genome_size, min_size, int(cpu / parallel), flag)
+            args = ((sample, info_obj, assembly_folder, gfa_folder, genome_size, min_size, int(cpu / parallel), flag)
                     for sample, info_obj in sample_dict.items())
             for results in executor.map(lambda x: NanoporeMethods.assemble_flye(*x), args):
                 # Initiate object
@@ -154,6 +155,8 @@ class NanoporeMethods(object):
                 my_sample.assembly = Assembly()
 
                 sample_dict[results[0]].assembly.raw = results[1]
+
+            NanoporeMethods.flye_assembly_stats(assembly_folder, output_folder)
 
         if os.path.exists(flag):  # Already performed
             print('\tSkipping assembling long reads. Already done.')
@@ -294,15 +297,18 @@ class NanoporeMethods(object):
         return sample, output_assembly
 
     @staticmethod
-    def assemble_shasta_parallel(sample_dict, output_folder, gfa_folder, min_size, cpu, parallel, flag):
-        Methods.make_folder(output_folder)
+    def assemble_shasta_parallel(sample_dict, assembly_folder, gfa_folder, min_size, cpu, parallel, flag,
+                                 output_folder):
+        Methods.make_folder(assembly_folder)
 
         with futures.ThreadPoolExecutor(max_workers=int(parallel)) as executor:
             # sample, info_obj, output_folder, gfa_folder, min_size, cpu, flag
-            args = ((sample, info_obj, output_folder, gfa_folder, min_size, int(cpu / parallel), flag)
+            args = ((sample, info_obj, assembly_folder, gfa_folder, min_size, int(cpu / parallel), flag)
                     for sample, info_obj in sample_dict.items())
             for results in executor.map(lambda x: NanoporeMethods.assemble_shasta(*x), args):
                 sample_dict[results[0]].assembly.raw = results[1]
+
+        NanoporeMethods.shasta_assembly_stats(assembly_folder, output_folder)
 
         if os.path.exists(flag):  # Already performed
             print('\tSkipping filtering long reads. Already done.')

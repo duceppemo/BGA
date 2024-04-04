@@ -6,7 +6,7 @@ from bga_methods import Methods
 
 class ReadQC(object):
     @staticmethod
-    def read_qc_falco(sample, path_list, output_folder, cpu):
+    def short_read_qc_falco(sample, path_list, output_folder, cpu):
         for read_file in path_list:
             cmd = ['falco',
                    '--outdir', output_folder,
@@ -19,13 +19,13 @@ class ReadQC(object):
             subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
     @staticmethod
-    def read_qc_falco_parallel(sample_dict, output_folder, cpu, parallel):
+    def short_read_qc_falco_parallel(sample_dict, output_folder, cpu, parallel):
         Methods.make_folder(output_folder)
 
         with futures.ThreadPoolExecutor(max_workers=int(parallel)) as executor:
             args = ((sample, path_list, output_folder, int(cpu / parallel))
                     for sample, path_list in sample_dict.items())
-            for results in executor.map(lambda x: ReadQC.read_qc_falco(*x), args):
+            for results in executor.map(lambda x: ReadQC.short_read_qc_falco(*x), args):
                 pass
 
     @staticmethod

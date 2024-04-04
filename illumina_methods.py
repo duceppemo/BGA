@@ -215,7 +215,8 @@ class IlluminaMethods(object):
         return fixed_fasta
 
     @staticmethod
-    def run_polypolish(genome, r1, r2, polished_folder, sample):
+    # def run_polypolish(genome, r1, r2, polished_folder, sample, n_run, cpu):
+    def run_polypolish(genome, r1, r2, polished_folder, sample, cpu):
         # I/O
         sam_r1 = polished_folder + sample + '_R1.sam'
         sam_r2 = polished_folder + sample + '_R2.sam'
@@ -225,8 +226,8 @@ class IlluminaMethods(object):
         subprocess.run(cmd_bwa_index, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
         # Map reads
-        cmd_map_r1 = ['bwa', 'mem', '-a', genome, r1]
-        cmd_map_r2 = ['bwa', 'mem', '-a', genome, r2]
+        cmd_map_r1 = ['bwa', 'mem', '-t', str(cpu), '-a', genome, r1]
+        cmd_map_r2 = ['bwa', 'mem', '-t', str(cpu), '-a', genome, r2]
 
         p1 = subprocess.Popen(cmd_map_r1, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         with open(sam_r1, 'w') as f:
@@ -237,10 +238,16 @@ class IlluminaMethods(object):
             f.write(p2.communicate()[0].decode('utf-8'))
 
         cmd_pp = ['polypolish', 'polish', genome, sam_r1, sam_r2]
+        p3 = subprocess.Popen(cmd_pp, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        sdtout, stderr = p3.communicate()
+
         fasta_pp = polished_folder + sample + '.polypolish.fasta'
-        p3 = subprocess.Popen(cmd_pp, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        # polypolish_log = polished_folder + sample + '.polypolish' + '_round' + str(n_run + 1) + '.log'
+        polypolish_log = polished_folder + sample + '.polypolish.log'
         with open(fasta_pp, 'w') as f:
-            f.write(p3.communicate()[0].decode('utf-8'))
+            f.write(sdtout.decode('utf-8'))
+        with open(polypolish_log, 'w') as f:
+            f.write(stderr.decode('utf-8'))
 
         # Fix fasta
         fixed_fasta = polished_folder + sample + '.fasta'
@@ -253,6 +260,43 @@ class IlluminaMethods(object):
                 if os.path.exists(j):
                     os.remove(j)
         os.remove(fasta_pp)
+
+        return fixed_fasta
+
+    @staticmethod
+    def run_pypolca(genome, r1, r2, polished_folder, sample, cpu):
+        # https://github.com/gbouras13/pypolca
+        # The polished output FASTA will be {prefix}_corrected.fasta in the specified output directory
+        # and the POLCA report will be the textfile {prefix}.report
+        tmp_folder = polished_folder + sample + '/'
+        fasta_pp = tmp_folder + sample + '_corrected.fasta'
+        Methods.make_folder(tmp_folder)
+
+        cmd = ['pypolca', 'run',
+               '--assembly', genome,
+               '--reads1', r1,
+               '--reads2', r2,
+               '--output', tmp_folder,
+               '--prefix', sample,
+               '--careful',
+               '--force',
+               '--threads', str(cpu)]
+
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        stdout, stderr = p.communicate()
+
+        pypolca_log = polished_folder + sample + '.pypolca.log'
+        with open(pypolca_log, 'w') as f:
+            f.write(stdout.decode('utf-8'))
+
+        # Fix fasta
+        fixed_fasta = polished_folder + sample + '.fasta'
+        IlluminaMethods.fix_fasta(fasta_pp, fixed_fasta)
+
+        # Cleanup
+        shutil.move(tmp_folder + sample + '.vcf', polished_folder)
+        shutil.move(tmp_folder + sample + '.report', polished_folder)
+        shutil.rmtree(tmp_folder)
 
         return fixed_fasta
 
@@ -297,20 +341,13 @@ class IlluminaMethods(object):
                     # Create polish folder
                     Methods.make_folder(output_folder)
 
-                    # NextPolish
-                    # print('\tNextPolish 1st round')  # Debug
-                    genome = IlluminaMethods.run_nextpolish(genome, r1, r2, output_folder, cpu, sample)
-                    # print('\tNextPolish 2nd round')  # Debug
-                    genome = IlluminaMethods.run_nextpolish(genome, r1, r2, output_folder, cpu, sample)
-
-                    # ntEdit
-                    # print('\tntEdit')  # Debug
-                    genome = IlluminaMethods.run_ntedit(genome, r1, r2, output_folder, cpu, sample)
-
                     # Polypolish
-                    for i in range(3):
-                        # print('\tPolypolish round {}'.format(i))  # Debug
-                        genome = IlluminaMethods.run_polypolish(genome, r1, r2, output_folder, sample)
+                    # for i in range(3):
+                    #     genome = IlluminaMethods.run_polypolish(genome, r1, r2, output_folder, sample, i, cpu)
+                    genome = IlluminaMethods.run_polypolish(genome, r1, r2, output_folder, sample, cpu)
+
+                    # Pypolca
+                    IlluminaMethods.run_pypolca(genome, r1, r2, output_folder, sample, cpu)
                 else:
                     print('Paired-end data missing for {}. Skipping short read polishing.'.format(sample))
                     polished_assembly = ''

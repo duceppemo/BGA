@@ -4,6 +4,7 @@ import glob
 import subprocess
 from concurrent import futures
 from bga_methods import Methods
+from illumina_methods import IlluminaMethods
 import csv
 import plotly.offline as offline
 import plotly.graph_objs as go
@@ -213,50 +214,76 @@ class AssemblyQcMethods(object):
                 pass
 
     @staticmethod
-    def short_read_coverage(genome, r1, r2, polished_folder, cpu, sample):
-        # I/O
-        output_bam = polished_folder + sample + '.bam'
+    def short_read_coverage(sample, info_obj, output_folder, cpu):
+        output_bam = output_folder + sample + '.bam'
 
-        # Index reference genome
-        cmd_bwa_index = ['bwa', 'index', genome]
-        subprocess.run(cmd_bwa_index, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-
-        bwa_cmd = ['bwa', 'mem', '-t', str(cpu), genome, r1, r2]
-        samtools_view_cmd = ['samtools', 'view', '-@', str(cpu), '-F', '4', '-h', '-T', genome, '-']
-        samtools_fixmate_cmd = ['samtools', 'fixmate', '-@', str(cpu), '-m', '-', '-']
-        samtools_sort_cmd = ['samtools', 'sort', '-@', str(cpu), '--reference', genome, '-']
-        samtools_markdup_cmd = ['samtools', 'markdup', '-r', '-@', str(cpu), '-', output_bam]
-        samtools_index_cmd = ['samtools', 'index', output_bam]  # samtools can only index chromosomes up to 512M bp.
-
-        p1 = subprocess.Popen(bwa_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        p2 = subprocess.Popen(samtools_view_cmd, stdin=p1.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        p1.stdout.close()
-        p3 = subprocess.Popen(samtools_fixmate_cmd, stdin=p1.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        p2.stdout.close()
-        p4 = subprocess.Popen(samtools_sort_cmd, stdin=p2.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        p3.stdout.close()
-        p5 = subprocess.Popen(samtools_markdup_cmd, stdin=p3.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        p4.stdout.close()
-        p5.communicate()
-
-        subprocess.run(samtools_index_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-
+        AssemblyQcMethods.map_minimap2(sample, info_obj, 'illumina', output_folder, cpu)
+        
         # Get coverage
-        cov_file = polished_folder + 'short_read_cov.tsv'
+        cov_file = output_folder + 'short_read_cov.tsv'
         cmd_cov = ['samtools', 'depth', output_bam]
         p = subprocess.Popen(cmd_cov, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         cov_list = list()
         for line in io.TextIOWrapper(p.stdout, encoding="utf-8"):
-            cov_list.append(line.split('\t')[2])
+            cov_list.append(int(line.split('\t')[2].rstrip()))
 
-        with open(cov_file, 'wa') as f:
+        with open(cov_file, 'a') as f:
             avg_cov = sum(cov_list) / len(cov_list)
             f.write('{}\t{}\n'.format(sample, round(avg_cov)))
 
         # Cleanup
-        ext = ['.amb', '.ann', '.bwt', '.pac', '.sa', '.bam']
+        ext = ['.amb', '.ann', '.bwt', '.pac', '.sa', '.bam', '.bai']
         for i in ext:
-            os.remove(polished_folder + "*" + i)
+            for j in glob.glob(output_folder + '/*' + i):
+                if os.path.exists(j):
+                    os.remove(j)
+
+    @staticmethod
+    def short_read_coverage_parallel(sample_dict, output_folder, cpu, parallel):
+        Methods.make_folder(output_folder)
+
+        with futures.ThreadPoolExecutor(max_workers=int(parallel)) as executor:
+            # sample, info_obj, read_type, output_folder, cpu
+            args = ((sample, info_obj, output_folder, int(cpu / parallel))
+                    for sample, info_obj in sample_dict.items())
+            for results in executor.map(lambda x: AssemblyQcMethods.short_read_coverage(*x), args):
+                pass
+
+    @staticmethod
+    def long_read_coverage(sample, info_obj, output_folder, cpu):
+        output_bam = output_folder + sample + '.bam'
+
+        AssemblyQcMethods.map_minimap2(sample, info_obj, 'nanopore', output_folder, cpu)
+
+        # Get coverage
+        cov_file = output_folder + 'long_read_cov.tsv'
+        cmd_cov = ['samtools', 'depth', output_bam]
+        p = subprocess.Popen(cmd_cov, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        cov_list = list()
+        for line in io.TextIOWrapper(p.stdout, encoding="utf-8"):
+            cov_list.append(int(line.split('\t')[2].rstrip()))
+
+        with open(cov_file, 'a') as f:
+            avg_cov = sum(cov_list) / len(cov_list)
+            f.write('{}\t{}\n'.format(sample, round(avg_cov)))
+
+        # Cleanup
+        ext = ['.amb', '.ann', '.bwt', '.pac', '.sa', '.bam', '.bai']
+        for i in ext:
+            for j in glob.glob(output_folder + '/*' + i):
+                if os.path.exists(j):
+                    os.remove(j)
+
+    @staticmethod
+    def long_read_coverage_parallel(sample_dict, output_folder, cpu, parallel):
+        Methods.make_folder(output_folder)
+
+        with futures.ThreadPoolExecutor(max_workers=int(parallel)) as executor:
+            # sample, info_obj, read_type, output_folder, cpu
+            args = ((sample, info_obj, output_folder, int(cpu / parallel))
+                    for sample, info_obj in sample_dict.items())
+            for results in executor.map(lambda x: AssemblyQcMethods.long_read_coverage(*x), args):
+                pass
 
     @staticmethod
     def map_minimap2(sample, info_obj, read_type, output_folder, cpu):
@@ -360,6 +387,14 @@ class AssemblyQcMethods(object):
             # Rename html report
             os.rename(sample_subfolder + 'qualimapReport.html', sample_subfolder + sample + '.html')
 
+            # Cleanup bam files
+            ext = ['.bam', '.bai']
+            for i in ext:
+                file_list = glob.glob(output_folder + '*' + i)
+                for j in file_list:
+                    if os.path.exists(j):
+                        os.remove(j)
+
     @staticmethod
     def run_qualimap_parallel(sample_dict, output_folder, cpu, mem, parallel):
         Methods.make_folder(output_folder)
@@ -370,14 +405,6 @@ class AssemblyQcMethods(object):
                     for sample, info_obj in sample_dict.items())
             for results in executor.map(lambda x: AssemblyQcMethods.run_qualimap(*x), args):
                 pass
-
-        # Cleanup bam files
-        ext = ['.bam', '.bai']
-        for i in ext:
-            file_list = glob.glob(output_folder + '*' + i)
-            for j in file_list:
-                if os.path.exists(j):
-                    os.remove(j)
 
     @staticmethod
     def run_quast(sample_dict, output_folder, cpu):
