@@ -294,8 +294,11 @@ class IlluminaMethods(object):
         IlluminaMethods.fix_fasta(fasta_pp, fixed_fasta)
 
         # Cleanup
-        shutil.move(tmp_folder + sample + '.vcf', polished_folder)
-        shutil.move(tmp_folder + sample + '.report', polished_folder)
+        try:
+            shutil.move(tmp_folder + sample + '.report', polished_folder)
+            shutil.move(tmp_folder + sample + '.vcf', polished_folder)  # Sometimes not present
+        except FileNotFoundError:
+            pass
         shutil.rmtree(tmp_folder)
 
         return fixed_fasta
