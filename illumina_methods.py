@@ -332,7 +332,6 @@ class IlluminaMethods(object):
         genome = info_obj.assembly.medaka
         polished_assembly = output_folder + sample + '.fasta'
 
-        # TODO: add flag check
         if not os.path.exists(flag):
             if os.path.exists(genome):
                 if os.path.exists(r1) and os.path.exists(r2):
@@ -342,8 +341,6 @@ class IlluminaMethods(object):
                     Methods.make_folder(output_folder)
 
                     # Polypolish
-                    # for i in range(3):
-                    #     genome = IlluminaMethods.run_polypolish(genome, r1, r2, output_folder, sample, i, cpu)
                     genome = IlluminaMethods.run_polypolish(genome, r1, r2, output_folder, sample, cpu)
 
                     # Pypolca

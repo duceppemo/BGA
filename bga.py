@@ -147,10 +147,10 @@ class BGA(object):
 
             # Long read polishing
             print('Long read polishing with Medaka...')
-            # TODO: run in a loop instead of parallel
-            NanoporeMethods.polish_medaka_parallel(self.sample_dict, polished_long_folder, self.model,
-                                                   self.cpu, self.parallel, done_polishing_long)
-
+            # NanoporeMethods.polish_medaka_parallel(self.sample_dict, polished_long_folder, self.model,
+            #                                        self.cpu, self.parallel, done_polishing_long)
+            NanoporeMethods.polish_medaka_loop(self.sample_dict, polished_long_folder, self.model,
+                                               self.cpu, done_polishing_long)
         else:
             raise Exception('You must provide long reads for the assembly.')
 

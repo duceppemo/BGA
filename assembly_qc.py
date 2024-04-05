@@ -4,10 +4,6 @@ import glob
 import subprocess
 from concurrent import futures
 from bga_methods import Methods
-from illumina_methods import IlluminaMethods
-import csv
-import plotly.offline as offline
-import plotly.graph_objs as go
 import gzip
 from itertools import groupby
 
@@ -32,7 +28,7 @@ class AssemblyQcMethods(object):
             return '0'
 
     @staticmethod
-    def run_minimap2(sample, ref, fastq_file, cpu, output_folder, keep_bam):
+    def run_minimap2(sample, ref, fastq_file, cpu, output_folder):
         print('\t{}'.format(sample))
 
         output_bam = output_folder + sample + '.bam'
@@ -76,11 +72,11 @@ class AssemblyQcMethods(object):
         subprocess.run(samtools_index_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
     @staticmethod
-    def run_minimap2_parallel(output_folder, ref, sample_dict, cpu, parallel, keep_bam):
+    def run_minimap2_parallel(output_folder, ref, sample_dict, cpu, parallel):
         Methods.make_folder(output_folder)
 
         with futures.ThreadPoolExecutor(max_workers=int(parallel)) as executor:
-            args = ((sample, ref, path, int(cpu / parallel), output_folder, keep_bam)
+            args = ((sample, ref, path, int(cpu / parallel), output_folder)
                     for sample, path in sample_dict.items())
             for results in executor.map(lambda x: AssemblyQcMethods.run_minimap2(*x), args):
                 pass
@@ -93,8 +89,8 @@ class AssemblyQcMethods(object):
         last_db = output_folder + ref_name + '.lastdb'
         query_file = query_folder + sample + '/' + sample + '.fasta'
         last_alignment = output_folder + sample + '.maf'
-        dot_plot_file = output_folder + sample + '_' + os.path.dirname(ref_file).split('/')[-2] \
-                        + '_vs_' + os.path.dirname(query_file).split('/')[-2] + '.png'
+        dot_plot_file = (output_folder + sample + '_' + os.path.dirname(ref_file).split('/')[-2] + '_vs_' +
+                         os.path.dirname(query_file).split('/')[-2] + '.png')
 
         # https://home.cc.umanitoba.ca/~psgendb/tutorials/bioLegato/getgenome/Last.html
         cmd_lastdb = ['lastdb', '-P', str(cpu), last_db, ref_file]
@@ -141,7 +137,6 @@ class AssemblyQcMethods(object):
                     '-postscript',
                     '-p', ouput_name,
                     ouput_name + '.delta']  # nucmer output
-                    # mummer_out]  # mummer output
 
         if ref and query:
             subprocess.run(cmd_nucmer, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)  # Find differences
@@ -336,16 +331,19 @@ class AssemblyQcMethods(object):
                 p3 = subprocess.Popen(samtools_fixmate_cmd, stdin=p2.stdout, stdout=subprocess.PIPE,
                                       stderr=subprocess.DEVNULL)
                 p2.stdout.close()
-                p4 = subprocess.Popen(samtools_sort_cmd, stdin=p3.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                p4 = subprocess.Popen(samtools_sort_cmd, stdin=p3.stdout, stdout=subprocess.PIPE,
+                                      stderr=subprocess.DEVNULL)
                 p3.stdout.close()
                 p5 = subprocess.Popen(samtools_markdup_cmd, stdin=p4.stdout, stdout=subprocess.PIPE,
                                       stderr=subprocess.DEVNULL)
                 p4.stdout.close()
                 p5.communicate()
             else:
-                p3 = subprocess.Popen(samtools_sort_cmd, stdin=p2.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                p3 = subprocess.Popen(samtools_sort_cmd, stdin=p2.stdout, stdout=subprocess.PIPE,
+                                      stderr=subprocess.DEVNULL)
                 p2.stdout.close()
-                p4 = subprocess.Popen(samtools_markdup_cmd, stdin=p3.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                p4 = subprocess.Popen(samtools_markdup_cmd, stdin=p3.stdout, stdout=subprocess.PIPE,
+                                      stderr=subprocess.DEVNULL)
                 p3.stdout.close()
                 p4.communicate()
 
