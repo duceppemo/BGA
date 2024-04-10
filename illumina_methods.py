@@ -134,86 +134,6 @@ class IlluminaMethods(object):
                 else:
                     f.write(line.upper())
 
-    # @staticmethod
-    # def run_nextpolish(genome, r1, r2, polished_folder, cpu, sample):
-    #     # Index genome
-    #     subprocess.run(['samtools', 'faidx', genome], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-    #
-    #     # Map paired-end reads to genome
-    #     IlluminaMethods.map_bwa_paired(genome, r1, r2, polished_folder, cpu, sample)
-    #     # print('\t\tMapping reads')
-    #     # IlluminaMethods.map_minimap2_short_pe(genome, r1, r2, polished_folder, cpu, sample)
-    #
-    #     # nextPolish subscripts location
-    #     # ./bin/nextPolish
-    #     # ./share/nextpolish-1.4.1/lib/nextpolish1.py
-    #     np_path = shutil.which('nextPolish')
-    #     np1_path = '/'.join(np_path.split('/')[:-2]) + '/share/nextpolish-1.4.1/lib/nextpolish1.py'
-    #
-    #     # Polish
-    #     cmd = ['python', np1_path,
-    #            '--genome', genome,
-    #            '--task', str(1),
-    #            '--process', str(cpu),
-    #            '--uppercase',
-    #            '--bam_sgs', polished_folder + sample + '.bam',
-    #            '-ploidy', str(1)]
-    #
-    #     fasta_np = polished_folder + sample + '.nextpolish.fasta'
-    #     fasta_fixed = polished_folder + sample + '.fasta'
-    #     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)  # Debug
-    #     # print('\t\tRunning NextPolish')
-    #     with open(fasta_np, 'w') as f:
-    #         f.write(p.communicate()[0].decode('utf-8'))
-    #
-    #     # Fix fasta
-    #     # print('\t\tFixing fasta')
-    #     IlluminaMethods.fix_fasta(fasta_np, fasta_fixed)
-    #
-    #     # Cleanup
-    #     genome_folder = os.path.dirname(genome)
-    #     ext = ['.amb', '.ann', '.bwt', '.pac', '.sa', '.fai', '.bam', '.bai']
-    #     for i in ext:
-    #         for j in glob.glob(genome_folder + '/*' + i):
-    #             if os.path.exists(j):
-    #                 os.remove(j)
-    #     os.remove(fasta_np)
-    #
-    #     return fasta_fixed
-    #
-    # @staticmethod
-    # def run_ntedit(genome, r1, r2, polished_folder, cpu, sample):
-    #     cmd_nthits = ['nthits',
-    #                   '-t', str(cpu),
-    #                   '-k', str(40),
-    #                   '-p', polished_folder + sample,
-    #                   '--outbloom',
-    #                   '--solid',
-    #                   r1, r2]
-    #
-    #     cmd_ntedit = ['ntedit',
-    #                   '-t', str(cpu),
-    #                   '-f', genome,
-    #                   '-b', polished_folder + sample,
-    #                   '-r', polished_folder + sample + '_k40.bf',
-    #                   '-m', str(1)]
-    #
-    #     subprocess.run(cmd_nthits, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-    #     subprocess.run(cmd_ntedit, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-    #
-    #     # Fix fasta
-    #     fixed_fasta = polished_folder + sample + '.fasta'
-    #     IlluminaMethods.fix_fasta(polished_folder + sample + '_edited.fa', fixed_fasta)
-    #
-    #     # Cleanup
-    #     ext = ['_variants.vcf', '_changes.tsv', '_k40.bf', '_edited.fa']
-    #     for i in ext:
-    #         for j in glob.glob(polished_folder + '/*' + i):
-    #             if os.path.exists(j):
-    #                 os.remove(j)
-    #
-    #     return fixed_fasta
-
     @staticmethod
     # def run_polypolish(genome, r1, r2, polished_folder, sample, n_run, cpu):
     def run_polypolish(genome, r1, r2, polished_folder, sample, cpu):
@@ -256,7 +176,7 @@ class IlluminaMethods(object):
         # Cleanup
         ext = ['.amb', '.ann', '.bwt', '.pac', '.sa', '.sam']
         for i in ext:
-            for j in glob.glob(polished_folder + '/*' + i):
+            for j in glob.glob(polished_folder + '/' + sample + '*' + i):
                 if os.path.exists(j):
                     os.remove(j)
         os.remove(fasta_pp)
@@ -295,7 +215,12 @@ class IlluminaMethods(object):
 
         # Cleanup
         try:
+            # If already ran
+            if os.path.exists(polished_folder + sample + '.report'):
+                os.remove(polished_folder + sample + '.report')
             shutil.move(tmp_folder + sample + '.report', polished_folder)
+            if os.path.exists(polished_folder + sample + '.vcf'):
+                os.remove(polished_folder + sample + '.vcf')
             shutil.move(tmp_folder + sample + '.vcf', polished_folder)  # Sometimes not present
         except FileNotFoundError:
             pass

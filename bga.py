@@ -1,4 +1,5 @@
 import os
+import sys
 from argparse import ArgumentParser
 from multiprocessing import cpu_count
 from psutil import virtual_memory
@@ -184,11 +185,10 @@ class BGA(object):
         AssemblyQcMethods.run_nucmer_medaka_parallel(self.sample_dict, mummer_long_folder, self.cpu, self.parallel)
 
         # Qualimap long reads
-        print('\tMapping long reads to assemblies with minimap2')
+        print('\tRunning Qualimap - long reads')
         AssemblyQcMethods.map_minimap2_parallel(self.sample_dict, qualimap_long_folder, 'nanopore',
                                                 self.cpu, self.parallel)
 
-        print('\tRunning Qualimap (long reads)')
         AssemblyQcMethods.run_qualimap_parallel(self.sample_dict, qualimap_long_folder,
                                                 self.cpu, self.mem, self.parallel)
 
@@ -204,10 +204,10 @@ class BGA(object):
                                                              self.cpu, self.parallel)
 
             # Qualimap short reads
-            print('\tMapping short reads to assemblies with minimap2')
+            print('\tRunning Qualimap - short reads')
             AssemblyQcMethods.map_minimap2_parallel(self.sample_dict, qualimap_long_folder, 'illumina',
                                                     self.cpu, self.parallel)
-            print('\tRunning Qualimap (short reads)')
+
             AssemblyQcMethods.run_qualimap_parallel(self.sample_dict, qualimap_short_folder, self.cpu, self.mem,
                                                     self.parallel)
 
@@ -226,7 +226,7 @@ if __name__ == "__main__":
     max_cpu = cpu_count()
     max_mem = int(virtual_memory().total * 0.85 / 1000000000)  # in GB
 
-    parser = ArgumentParser(description='Bacterial Genome assembly.')
+    parser = ArgumentParser(description='Long read or hybrid bacterial genome assembly pipeline.')
     parser.add_argument('-l', '--long-reads', metavar='/path/to/nanopore_folder',
                         required=True, type=str,
                         help='Folder that contains the fastq files from Nanopore. Mandatory.')
@@ -260,9 +260,11 @@ if __name__ == "__main__":
                         required=False, action='store_true',
                         help='Filter long reads with Filtlong prior assembly. Drop bottom 5%%. Default is False.')
     parser.add_argument('--model',
-                        type=str, required=False, default='r941_min_sup_g507',
-                        choices=['r941_min_sup_g507', 'r103_sup_g507', 'r104_e81_sup_g5015'],
-                        help='Medaka model. Default is for R9.4.1 flowcell.')
+                        type=str, required=False, default='r1041_e82_400bps_sup_g615',
+                        help='Medaka model. Default is for R10.4.1 v14 flowcell.')
+    parser.add_argument('--show-models',
+                        action='help',
+                        help='Show available models for Medaka polishing and exit.')
     parser.add_argument('--polish',
                         required=False, action='store_true',
                         help='Polish long read assembly with Illumina paired-end data. Default is False.')
@@ -284,6 +286,11 @@ if __name__ == "__main__":
                         help='Memory in GB. Default is 85%% of total memory ({})'.format(max_mem))
     parser.add_argument('-v', '--version', action='version',
                         version=f'{os.path.basename(__file__)}: version {__version__}')
+
+    if len(sys.argv) == 2 and sys.argv[1] == '--show-models':
+        medaka_model_list = NanoporeMethods.print_medaka_models()
+        print('Available medaka models:\n{}'.format(', '.join(medaka_model_list)))
+        sys.exit()
 
     # Get the arguments into an object
     arguments = parser.parse_args()

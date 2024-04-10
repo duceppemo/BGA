@@ -1,4 +1,5 @@
 import os
+import sys
 import gzip
 import shutil
 import subprocess
@@ -10,6 +11,19 @@ from bga_methods import Methods, Sample, Assembly
 
 
 class NanoporeMethods(object):
+    @staticmethod
+    def print_medaka_models():
+        # Auto populate model list
+        cmd = ['medaka_consensus', '-h']
+        p = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        while True:
+            line = p.stderr.readline()
+            if b'Choices:' in line:
+                medaka_model_list = sorted([x.decode('utf-8') for x in line.split()[1:]], reverse=False)
+                break
+
+        return medaka_model_list
+
     @staticmethod
     def run_porechop(sample, info_obj, trimmed_folder, cpu, flag):
         input_fastq = info_obj.nanopore.raw
@@ -451,29 +465,28 @@ class NanoporeMethods(object):
         #     for results in executor.map(lambda x: NanoporeMethods.polish_medaka(*x), args):
         #         sample_dict[results[0]].assembly.medaka = results[1]
 
+        # Running one at the time.
+        with futures.ThreadPoolExecutor(max_workers=1) as executor:
+            args = ((sample, info_obj, output_folder, model, int(cpu), flag)
+                    for sample, info_obj in sample_dict.items())
+            for results in executor.map(lambda x: NanoporeMethods.polish_medaka(*x), args):
+                sample_dict[results[0]].assembly.medaka = results[1]
         if os.path.exists(flag):  # Already performed
             print('\tSkipping long read polishing. Already done.')
         else:  # Create the done flag
-            # Running one at the time.
-            with futures.ThreadPoolExecutor(max_workers=1) as executor:
-                args = ((sample, info_obj, output_folder, model, int(cpu), flag)
-                        for sample, info_obj in sample_dict.items())
-                for results in executor.map(lambda x: NanoporeMethods.polish_medaka(*x), args):
-                    sample_dict[results[0]].assembly.medaka = results[1]
-
             Methods.flag_done(flag)
 
     @staticmethod
     def polish_medaka_loop(sample_dict, output_folder, model, cpu, flag):
         Methods.make_folder(output_folder)
 
+        for sample, info_obj in sample_dict.items():
+            # return sample, polished_assembly
+            results = NanoporeMethods.polish_medaka(sample, info_obj, output_folder, model, int(cpu), flag)
+            sample_dict[results[0]].assembly.medaka = results[1]
+
         if os.path.exists(flag):  # Already performed
             print('\tSkipping long read polishing. Already done.')
         else:  # Create the done flag
             # Running one at the time.
-            for sample, info_obj in sample_dict.items():
-                # return sample, polished_assembly
-                results = NanoporeMethods.polish_medaka(sample, info_obj, output_folder, model, int(cpu), flag)
-                sample_dict[results[0]].assembly.medaka = results[1]
-
             Methods.flag_done(flag)

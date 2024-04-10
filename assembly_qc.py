@@ -122,12 +122,12 @@ class AssemblyQcMethods(object):
         # I/O
         ref = info_obj.assembly.raw
         query = info_obj.assembly.medaka
-        ouput_name = output_folder + sample + '_medaka'
+        output_name = output_folder + sample + '_medaka'
 
         # To plot with GNUplot
         cmd_nucmer = ['nucmer',
                       '-t', str(cpu),
-                      '-p', ouput_name,  # Will append '.delta'
+                      '-p', output_name,  # Will append '.delta'
                       '--mincluster={}'.format(100),
                       ref, query]
 
@@ -135,20 +135,13 @@ class AssemblyQcMethods(object):
                     '-x', '[0,{}]'.format(AssemblyQcMethods.fasta_length(ref)),
                     '-y', '[0,{}]'.format(AssemblyQcMethods.fasta_length(query)),
                     '-postscript',
-                    '-p', ouput_name,
-                    ouput_name + '.delta']  # nucmer output
+                    '-p', output_name,
+                    output_name + '.delta']  # nucmer output
 
         if ref and query:
             subprocess.run(cmd_nucmer, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)  # Find differences
             Methods.fix_mummerplot()  # GNUplot path is not defined in mummerplot when installed via conda
             subprocess.run(cmd_plot, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)  # Make plot
-
-            # Cleanup files
-            ext = ['.delta', '.fplot', '.gp', '.rplot']
-            for i in ext:
-                for j in glob.glob(output_folder + '/*' + i):
-                    if os.path.exists(j):
-                        os.remove(j)
 
     @staticmethod
     def run_nucmer_medaka_parallel(sample_dict, output_folder, cpu, parallel):
@@ -160,6 +153,13 @@ class AssemblyQcMethods(object):
             for results in executor.map(lambda x: AssemblyQcMethods.run_nucmer_medaka(*x), args):
                 pass
 
+        # Cleanup files
+        ext = ['.delta', '.fplot', '.gp', '.rplot']
+        for i in ext:
+            for j in glob.glob(output_folder + '/*' + i):
+                if os.path.exists(j):
+                    os.remove(j)
+
     @staticmethod
     def run_nucmer_polypolish(sample, info_obj, output_folder, cpu):
         # https://mummer4.github.io/tutorial/tutorial.html
@@ -168,11 +168,11 @@ class AssemblyQcMethods(object):
         # I/O
         ref = info_obj.assembly.medaka
         query = info_obj.assembly.polypolish
-        ouput_name = output_folder + sample + '_medaka'
+        output_name = output_folder + sample + '_medaka'
 
         cmd_nucmer = ['nucmer',
                       '-t', str(cpu),
-                      '-p', ouput_name,  # Will append '.delta'
+                      '-p', output_name,  # Will append '.delta'
                       '--mincluster={}'.format(100),
                       ref, query]
 
@@ -180,8 +180,8 @@ class AssemblyQcMethods(object):
                     '-x', '[0,{}]'.format(AssemblyQcMethods.fasta_length(ref)),
                     '-y', '[0,{}]'.format(AssemblyQcMethods.fasta_length(query)),
                     '-postscript',
-                    '-p', ouput_name,
-                    ouput_name + '.delta']  # nucmer output
+                    '-p', output_name,
+                    output_name + '.delta']  # nucmer output
 
         if ref and query:
             subprocess.run(cmd_nucmer, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
@@ -190,13 +190,6 @@ class AssemblyQcMethods(object):
             # GNUplot path is not defined in mummerplot when installed via conda
             Methods.fix_mummerplot()
             subprocess.run(cmd_plot, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-
-            # Cleanup files
-            ext = ['.delta', '.fplot', '.gp', '.rplot']
-            for i in ext:
-                for j in glob.glob(output_folder + '/*' + i):
-                    if os.path.exists(j):
-                        os.remove(j)
 
     @staticmethod
     def run_nucmer_polypolish_parallel(sample_dict, output_folder, cpu, parallel):
@@ -207,6 +200,13 @@ class AssemblyQcMethods(object):
                     for sample, info_obj in sample_dict.items())
             for results in executor.map(lambda x: AssemblyQcMethods.run_nucmer_polypolish(*x), args):
                 pass
+
+        # Cleanup files
+        ext = ['.delta', '.fplot', '.gp', '.rplot']
+        for i in ext:
+            for j in glob.glob(output_folder + '/*' + i):
+                if os.path.exists(j):
+                    os.remove(j)
 
     @staticmethod
     def short_read_coverage(sample, info_obj, output_folder, cpu):
@@ -229,7 +229,7 @@ class AssemblyQcMethods(object):
         # Cleanup
         ext = ['.amb', '.ann', '.bwt', '.pac', '.sa', '.bam', '.bai']
         for i in ext:
-            for j in glob.glob(output_folder + '/*' + i):
+            for j in glob.glob(output_folder + '/' + sample + '*' + i):
                 if os.path.exists(j):
                     os.remove(j)
 
@@ -265,7 +265,7 @@ class AssemblyQcMethods(object):
         # Cleanup
         ext = ['.amb', '.ann', '.bwt', '.pac', '.sa', '.bam', '.bai']
         for i in ext:
-            for j in glob.glob(output_folder + '/*' + i):
+            for j in glob.glob(output_folder + '/' + sample + '*' + i):
                 if os.path.exists(j):
                     os.remove(j)
 
@@ -385,13 +385,13 @@ class AssemblyQcMethods(object):
             # Rename html report
             os.rename(sample_subfolder + 'qualimapReport.html', sample_subfolder + sample + '.html')
 
-            # Cleanup bam files
-            ext = ['.bam', '.bai']
-            for i in ext:
-                file_list = glob.glob(output_folder + '*' + i)
-                for j in file_list:
-                    if os.path.exists(j):
-                        os.remove(j)
+        # Cleanup bam files
+        ext = ['.bam', '.bai']
+        for i in ext:
+            file_list = glob.glob(output_folder + '/' + sample + '*' + i)
+            for j in file_list:
+                if os.path.exists(j):
+                    os.remove(j)
 
     @staticmethod
     def run_qualimap_parallel(sample_dict, output_folder, cpu, mem, parallel):
