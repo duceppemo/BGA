@@ -1,3 +1,12 @@
+> [!IMPORTANT]
+> **BGA has been superseded by [HashBrown](https://github.com/duceppemo/HashBrown)**, which merges BGA
+> and [BGA_short](https://github.com/duceppemo/BGA_short) into one tool and one conda environment:
+> benchmark-chosen polishing defaults (validated against gold-standard genomes on seven tracks), and a
+> QA-grade HTML/PDF report per sample (MIMAG verdict, species confirmation, completeness, typing, AMR,
+> contamination screens). First release:
+> [HashBrown v1.1.0](https://github.com/duceppemo/HashBrown/releases/tag/v1.1.0).
+> This repository is kept for reference and is no longer developed.
+
 ## Info
 This pipeline is designed to assembly bacterial genomes from long reads. Although it could technically work for both Nanopore and Pacbio,
 it was design with Nanopore support in mind. For example, only Nanopore long read pre-processing (trimming and filtering) is supported (optional).
